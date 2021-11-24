@@ -1,15 +1,22 @@
 import { quote } from 'shlex';
+import { TEMPORARY_ERROR } from '../../constants/error-messages';
 import { logger } from '../../logger';
-import { exec } from '../../util/exec';
-import { BinarySource } from '../../util/exec/common';
-import { readLocalFile, writeLocalFile } from '../../util/fs';
-import { UpdateArtifact, UpdateArtifactsResult } from '../common';
+import { ExecOptions, exec } from '../../util/exec';
+import {
+  findLocalSiblingOrParent,
+  readLocalFile,
+  writeLocalFile,
+} from '../../util/fs';
+import * as hostRules from '../../util/host-rules';
+
+import type { UpdateArtifact, UpdateArtifactsResult } from '../types';
+
+const hexRepoUrl = 'https://hex.pm/';
 
 export async function updateArtifacts({
   packageFileName,
   updatedDeps,
   newPackageFileContent,
-  config,
 }: UpdateArtifact): Promise<UpdateArtifactsResult[] | null> {
   logger.debug(`mix.getArtifacts(${packageFileName})`);
   if (updatedDeps.length < 1) {
@@ -17,13 +24,8 @@ export async function updateArtifacts({
     return null;
   }
 
-  const cwd = config.localDir;
-  if (!cwd) {
-    logger.debug('No local dir specified');
-    return null;
-  }
-
-  const lockFileName = 'mix.lock';
+  const lockFileName =
+    (await findLocalSiblingOrParent(packageFileName, 'mix.lock')) || 'mix.lock';
   try {
     await writeLocalFile(packageFileName, newPackageFileContent);
   } catch (err) {
@@ -44,26 +46,54 @@ export async function updateArtifacts({
     return null;
   }
 
-  const cmdParts =
-    config.binarySource === BinarySource.Docker
-      ? [
-          'docker',
-          'run',
-          '--rm',
-          `-v ${cwd}:${cwd}`,
-          `-w ${cwd}`,
-          'renovate/elixir mix',
-        ]
-      : ['mix'];
-  cmdParts.push('deps.update');
+  const organizations = new Set<string>();
 
-  /* istanbul ignore next */
+  for (const { lookupName } of updatedDeps) {
+    if (lookupName) {
+      const [, organization] = lookupName.split(':');
+
+      if (organization) {
+        organizations.add(organization);
+      }
+    }
+  }
+
+  const preCommands = Array.from(organizations).reduce((acc, organization) => {
+    const url = `${hexRepoUrl}api/repos/${organization}/`;
+    const { token } = hostRules.find({ url });
+
+    if (token) {
+      logger.debug(`Authenticating to hex organization ${organization}`);
+      const authCommand = `mix hex.organization auth ${organization} --key ${token}`;
+      return [...acc, authCommand];
+    }
+
+    return acc;
+  }, []);
+
+  const execOptions: ExecOptions = {
+    cwdFile: packageFileName,
+    docker: {
+      image: 'elixir',
+      preCommands,
+    },
+  };
+  const command = [
+    'mix',
+    'deps.update',
+    ...updatedDeps.map((dep) => quote(dep.depName)),
+  ].join(' ');
+
   try {
-    const command = [...cmdParts, ...updatedDeps.map(quote)].join(' ');
-    await exec(command, { cwd });
+    await exec(command, execOptions);
   } catch (err) {
+    // istanbul ignore if
+    if (err.message === TEMPORARY_ERROR) {
+      throw err;
+    }
+
     logger.warn(
-      { err, message: err.message },
+      { err, message: err.message, command },
       'Failed to update Mix lock file'
     );
 

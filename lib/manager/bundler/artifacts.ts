@@ -1,24 +1,29 @@
+import { lt } from '@renovatebot/ruby-semver';
 import { quote } from 'shlex';
-import { BUNDLER_INVALID_CREDENTIALS } from '../../constants/error-messages';
+import {
+  BUNDLER_INVALID_CREDENTIALS,
+  TEMPORARY_ERROR,
+} from '../../constants/error-messages';
 import { logger } from '../../logger';
 import { HostRule } from '../../types';
 import * as memCache from '../../util/cache/memory';
 import { ExecOptions, exec } from '../../util/exec';
 import {
   deleteLocalFile,
+  ensureCacheDir,
   getSiblingFileName,
   readLocalFile,
   writeLocalFile,
 } from '../../util/fs';
 import { getRepoStatus } from '../../util/git';
+import { regEx } from '../../util/regex';
+import { add } from '../../util/sanitize';
 import { isValid } from '../../versioning/ruby';
-import { UpdateArtifact, UpdateArtifactsResult } from '../common';
+import type { UpdateArtifact, UpdateArtifactsResult } from '../types';
 import {
   findAllAuthenticatable,
   getAuthenticationHeaderValue,
-  getDomain,
 } from './host-rules';
-import { getGemHome } from './utils';
 
 const hostConfigVariablePrefix = 'BUNDLE_';
 
@@ -42,8 +47,8 @@ async function getRubyConstraint(
     if (rubyVersionFileContent) {
       logger.debug('Using ruby version specified in .ruby-version');
       rubyConstraint = rubyVersionFileContent
-        .replace(/^ruby-/, '')
-        .replace(/\n/g, '')
+        .replace(regEx(/^ruby-/), '')
+        .replace(regEx(/\n/g), '')
         .trim();
     }
   }
@@ -51,13 +56,15 @@ async function getRubyConstraint(
 }
 
 function buildBundleHostVariable(hostRule: HostRule): Record<string, string> {
-  const varName =
-    hostConfigVariablePrefix +
-    getDomain(hostRule)
+  if (hostRule.resolvedHost.includes('-')) {
+    return {};
+  }
+  const varName = hostConfigVariablePrefix.concat(
+    hostRule.resolvedHost
       .split('.')
       .map((term) => term.toUpperCase())
-      .join('__');
-
+      .join('__')
+  );
   return {
     [varName]: `${getAuthenticationHeaderValue(hostRule)}`,
   };
@@ -66,12 +73,8 @@ function buildBundleHostVariable(hostRule: HostRule): Record<string, string> {
 export async function updateArtifacts(
   updateArtifact: UpdateArtifact
 ): Promise<UpdateArtifactsResult[] | null> {
-  const {
-    packageFileName,
-    updatedDeps,
-    newPackageFileContent,
-    config,
-  } = updateArtifact;
+  const { packageFileName, updatedDeps, newPackageFileContent, config } =
+    updateArtifact;
   const { constraints = {} } = config;
   logger.debug(`bundler.updateArtifacts(${packageFileName})`);
   const existingError = memCache.get<string>('bundlerArtifactsError');
@@ -99,7 +102,10 @@ export async function updateArtifacts(
     if (config.isLockFileMaintenance) {
       cmd = 'bundle lock';
     } else {
-      cmd = `bundle lock --update ${updatedDeps.map(quote).join(' ')}`;
+      cmd = `bundle lock --update ${updatedDeps
+        .map((dep) => dep.depName)
+        .map(quote)
+        .join(' ')}`;
     }
 
     let bundlerVersion = '';
@@ -119,9 +125,11 @@ export async function updateArtifacts(
       `gem install bundler${bundlerVersion}`,
     ];
 
-    const bundlerHostRulesVariables = findAllAuthenticatable({
-      hostType: 'bundler',
-    }).reduce(
+    const bundlerHostRules = findAllAuthenticatable({
+      hostType: 'rubygems',
+    });
+
+    const bundlerHostRulesVariables = bundlerHostRules.reduce(
       (variables, hostRule) => ({
         ...variables,
         ...buildBundleHostVariable(hostRule),
@@ -129,20 +137,57 @@ export async function updateArtifacts(
       {} as Record<string, string>
     );
 
+    // Detect hosts with a hyphen '-' in the url.
+    // Those cannot be added with environment variables but need to be added
+    // with the bundler config
+    const bundlerHostRulesAuthCommands: string[] = bundlerHostRules.reduce(
+      (authCommands: string[], hostRule) => {
+        if (hostRule.resolvedHost.includes('-')) {
+          const creds = getAuthenticationHeaderValue(hostRule);
+          authCommands.push(`${hostRule.resolvedHost} ${creds}`);
+          // sanitize the authentication
+          add(creds);
+        }
+        return authCommands;
+      },
+      []
+    );
+
+    // Bundler < 2 has a different config option syntax than >= 2
+    if (
+      bundlerHostRulesAuthCommands &&
+      bundler &&
+      isValid(bundler) &&
+      lt(bundler, '2')
+    ) {
+      preCommands.push(
+        ...bundlerHostRulesAuthCommands.map(
+          (authCommand) => `bundler config --local ${authCommand}`
+        )
+      );
+    } else if (bundlerHostRulesAuthCommands) {
+      preCommands.push(
+        ...bundlerHostRulesAuthCommands.map(
+          (authCommand) => `bundler config set --local ${authCommand}`
+        )
+      );
+    }
+
     const execOptions: ExecOptions = {
       cwdFile: packageFileName,
       extraEnv: {
         ...bundlerHostRulesVariables,
-        GEM_HOME: await getGemHome(config),
+        GEM_HOME: await ensureCacheDir('bundler'),
       },
       docker: {
-        image: 'renovate/ruby',
+        image: 'ruby',
         tagScheme: 'ruby',
         tagConstraint: await getRubyConstraint(updateArtifact),
         preCommands,
       },
     };
     await exec(cmd, execOptions);
+
     const status = await getRepoStatus();
     if (!status.modified.includes(lockFileName)) {
       return null;
@@ -158,6 +203,9 @@ export async function updateArtifacts(
       },
     ];
   } catch (err) /* istanbul ignore next */ {
+    if (err.message === TEMPORARY_ERROR) {
+      throw err;
+    }
     const output = `${String(err.stdout)}\n${String(err.stderr)}`;
     if (
       err.message.includes('fatal: Could not parse object') ||
@@ -187,7 +235,7 @@ export async function updateArtifacts(
       memCache.set('bundlerArtifactsError', BUNDLER_INVALID_CREDENTIALS);
       throw new Error(BUNDLER_INVALID_CREDENTIALS);
     }
-    const resolveMatchRe = new RegExp('\\s+(.*) was resolved to', 'g');
+    const resolveMatchRe = regEx('\\s+(.*) was resolved to', 'g');
     if (output.match(resolveMatchRe) && !config.isLockFileMaintenance) {
       logger.debug({ err }, 'Bundler has a resolve error');
       const resolveMatches = [];

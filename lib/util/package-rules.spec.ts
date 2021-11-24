@@ -1,64 +1,71 @@
-import { UpdateType } from '../config';
-import {
-  LANGUAGE_DOCKER,
-  LANGUAGE_JAVASCRIPT,
-  LANGUAGE_NODE,
-  LANGUAGE_PYTHON,
-} from '../constants/languages';
+import type { PackageRuleInputConfig, UpdateType } from '../config/types';
+import { ProgrammingLanguage } from '../constants';
 
 import * as datasourceDocker from '../datasource/docker';
-import * as datasourceOrb from '../datasource/orb';
-import { Config, applyPackageRules } from './package-rules';
+import { OrbDatasource } from '../datasource/orb';
+import { applyPackageRules } from './package-rules';
 
-type TestConfig = Config & { x?: number; y?: number };
+type TestConfig = PackageRuleInputConfig & {
+  x?: number;
+  y?: number;
+  groupName?: string;
+};
 
-describe('applyPackageRules()', () => {
+describe('util/package-rules', () => {
   const config1: TestConfig = {
     foo: 'bar',
 
     packageRules: [
       {
-        packageNames: ['a', 'b'],
+        matchPackageNames: ['a', 'b'],
+        matchPackagePrefixes: ['xyz/'],
+        excludePackagePrefixes: ['xyz/foo'],
         x: 2,
       },
       {
-        packagePatterns: ['a', 'b'],
+        matchPackagePatterns: ['a', 'b'],
         excludePackageNames: ['aa'],
         excludePackagePatterns: ['d'],
         y: 2,
       },
+      {
+        matchPackagePrefixes: ['xyz/'],
+        excludePackageNames: ['xyz/foo'],
+        groupName: 'xyz',
+      },
     ],
   };
   it('applies', () => {
-    const config: Config = {
+    const config: PackageRuleInputConfig = {
       depName: 'a',
       isBump: true,
       currentValue: '1.0.0',
       packageRules: [
         {
-          packagePatterns: ['*'],
+          matchPackagePatterns: ['*'],
           matchCurrentVersion: '<= 2.0.0',
         },
         {
-          packageNames: ['b'],
+          matchPackageNames: ['b'],
           matchCurrentVersion: '<= 2.0.0',
         },
         {
           excludePackagePatterns: ['*'],
-          packageNames: ['b'],
+          matchPackageNames: ['b'],
         },
         {
-          updateTypes: ['bump'],
+          matchUpdateTypes: ['bump'],
         },
         {
           excludePackageNames: ['a'],
-          packageNames: ['b'],
+          matchPackageNames: ['b'],
         },
         {
           matchCurrentVersion: '<= 2.0.0',
         },
       ],
     };
+    // FIXME: explicit assert condition
     expect(applyPackageRules(config)).toMatchSnapshot();
   });
   it('applies both rules for a', () => {
@@ -68,6 +75,7 @@ describe('applyPackageRules()', () => {
     const res = applyPackageRules({ ...config1, ...dep });
     expect(res.x).toBe(2);
     expect(res.y).toBe(2);
+    expect(res.groupName).toBeUndefined();
   });
   it('applies both rules for b', () => {
     const dep = {
@@ -76,6 +84,7 @@ describe('applyPackageRules()', () => {
     const res = applyPackageRules({ ...config1, ...dep });
     expect(res.x).toBe(2);
     expect(res.y).toBe(2);
+    expect(res.groupName).toBeUndefined();
   });
   it('applies the second rule', () => {
     const dep = {
@@ -84,6 +93,33 @@ describe('applyPackageRules()', () => {
     const res = applyPackageRules({ ...config1, ...dep });
     expect(res.x).toBeUndefined();
     expect(res.y).toBe(2);
+    expect(res.groupName).toBeUndefined();
+  });
+  it('applies matchPackagePrefixes', () => {
+    const dep = {
+      depName: 'xyz/abc',
+    };
+    const res = applyPackageRules({ ...config1, ...dep });
+    expect(res.x).toBe(2);
+    expect(res.y).toBe(2);
+    expect(res.groupName).toBe('xyz');
+  });
+
+  it('applies excludePackageNames', () => {
+    const dep = {
+      depName: 'xyz/foo',
+    };
+    const res = applyPackageRules({ ...config1, ...dep });
+    expect(res.groupName).toBeUndefined();
+  });
+
+  it('applies excludePackagePrefixes', () => {
+    const dep = {
+      depName: 'xyz/foo-a',
+    };
+    const res = applyPackageRules({ ...config1, ...dep });
+    expect(res.x).toBeUndefined();
+    expect(res.groupName).toBe('xyz');
   });
   it('applies the second second rule', () => {
     const dep = {
@@ -112,7 +148,7 @@ describe('applyPackageRules()', () => {
   it('ignores patterns if lock file maintenance', () => {
     const dep = {
       enabled: true,
-      packagePatterns: ['.*'],
+      matchPackagePatterns: ['.*'],
       updateType: 'lockFileMaintenance' as UpdateType,
       packageRules: [
         {
@@ -122,9 +158,9 @@ describe('applyPackageRules()', () => {
       ],
     };
     const res = applyPackageRules(dep);
-    expect(res.enabled).toBe(true);
+    expect(res.enabled).toBeTrue();
     const res2 = applyPackageRules({ ...dep, depName: 'anything' });
-    expect(res2.enabled).toBe(false);
+    expect(res2.enabled).toBeFalse();
   });
   it('matches anything if missing inclusive rules', () => {
     const config: TestConfig = {
@@ -150,8 +186,8 @@ describe('applyPackageRules()', () => {
     const config: TestConfig = {
       packageRules: [
         {
-          packageNames: ['neutrino'],
-          packagePatterns: ['^@neutrino\\/'],
+          matchPackageNames: ['neutrino'],
+          matchPackagePatterns: ['^@neutrino\\/'],
           x: 1,
         },
       ],
@@ -168,8 +204,8 @@ describe('applyPackageRules()', () => {
     const config: TestConfig = {
       packageRules: [
         {
-          depTypeList: ['dependencies', 'peerDependencies'],
-          packageNames: ['a'],
+          matchDepTypes: ['dependencies', 'peerDependencies'],
+          matchPackageNames: ['a'],
           x: 1,
         },
       ],
@@ -185,8 +221,8 @@ describe('applyPackageRules()', () => {
     const config: TestConfig = {
       packageRules: [
         {
-          depTypeList: ['test'],
-          packageNames: ['a'],
+          matchDepTypes: ['test'],
+          matchPackageNames: ['a'],
           x: 1,
         },
       ],
@@ -202,15 +238,15 @@ describe('applyPackageRules()', () => {
     const config: TestConfig = {
       packageRules: [
         {
-          managers: ['npm', 'meteor'],
-          packageNames: ['node'],
+          matchManagers: ['npm', 'meteor'],
+          matchPackageNames: ['node'],
           x: 1,
         },
       ],
     };
     const dep = {
       depType: 'dependencies',
-      language: LANGUAGE_JAVASCRIPT,
+      language: ProgrammingLanguage.JavaScript,
       manager: 'meteor',
       depName: 'node',
     };
@@ -221,15 +257,15 @@ describe('applyPackageRules()', () => {
     const config: TestConfig = {
       packageRules: [
         {
-          managers: ['dockerfile', 'npm'],
-          packageNames: ['node'],
+          matchManagers: ['dockerfile', 'npm'],
+          matchPackageNames: ['node'],
           x: 1,
         },
       ],
     };
     const dep = {
       depType: 'dependencies',
-      language: LANGUAGE_PYTHON,
+      language: ProgrammingLanguage.Python,
       manager: 'pipenv',
       depName: 'node',
     };
@@ -240,15 +276,18 @@ describe('applyPackageRules()', () => {
     const config: TestConfig = {
       packageRules: [
         {
-          languages: [LANGUAGE_JAVASCRIPT, LANGUAGE_NODE],
-          packageNames: ['node'],
+          matchLanguages: [
+            ProgrammingLanguage.JavaScript,
+            ProgrammingLanguage.NodeJS,
+          ],
+          matchPackageNames: ['node'],
           x: 1,
         },
       ],
     };
     const dep = {
       depType: 'dependencies',
-      language: LANGUAGE_JAVASCRIPT,
+      language: ProgrammingLanguage.JavaScript,
       manager: 'meteor',
       depName: 'node',
     };
@@ -259,15 +298,15 @@ describe('applyPackageRules()', () => {
     const config: TestConfig = {
       packageRules: [
         {
-          languages: [LANGUAGE_DOCKER],
-          packageNames: ['node'],
+          matchLanguages: [ProgrammingLanguage.Docker],
+          matchPackageNames: ['node'],
           x: 1,
         },
       ],
     };
     const dep = {
       depType: 'dependencies',
-      language: LANGUAGE_PYTHON,
+      language: ProgrammingLanguage.Python,
       manager: 'pipenv',
       depName: 'node',
     };
@@ -278,14 +317,14 @@ describe('applyPackageRules()', () => {
     const config: TestConfig = {
       packageRules: [
         {
-          datasources: [datasourceOrb.id, datasourceDocker.id],
+          matchDatasources: [OrbDatasource.id, datasourceDocker.id],
           x: 1,
         },
       ],
     };
     const dep = {
       depType: 'dependencies',
-      datasource: datasourceOrb.id,
+      datasource: OrbDatasource.id,
       baseBranch: 'master',
     };
     const res = applyPackageRules({ ...config, ...dep });
@@ -295,14 +334,14 @@ describe('applyPackageRules()', () => {
     const config: TestConfig = {
       packageRules: [
         {
-          baseBranchList: ['master', 'staging'],
+          matchBaseBranches: ['master', 'staging'],
           x: 1,
         },
       ],
     };
     const dep = {
       depType: 'dependencies',
-      datasource: datasourceOrb.id,
+      datasource: OrbDatasource.id,
       baseBranch: 'master',
     };
     const res = applyPackageRules({ ...config, ...dep });
@@ -312,7 +351,7 @@ describe('applyPackageRules()', () => {
     const config: TestConfig = {
       packageRules: [
         {
-          datasources: [datasourceOrb.id],
+          matchDatasources: [OrbDatasource.id],
           x: 1,
         },
       ],
@@ -328,7 +367,7 @@ describe('applyPackageRules()', () => {
     const config: TestConfig = {
       packageRules: [
         {
-          baseBranchList: ['master'],
+          matchBaseBranches: ['master'],
           x: 1,
         },
       ],
@@ -344,7 +383,7 @@ describe('applyPackageRules()', () => {
     const config: TestConfig = {
       packageRules: [
         {
-          updateTypes: ['minor', 'patch'],
+          matchUpdateTypes: ['minor', 'patch'],
           x: 1,
         },
       ],
@@ -357,11 +396,11 @@ describe('applyPackageRules()', () => {
     const res = applyPackageRules({ ...config, ...dep });
     expect(res.x).toBe(1);
   });
-  it('matches sourceUrlPrefixes', () => {
+  it('matches matchSourceUrlPrefixes', () => {
     const config: TestConfig = {
       packageRules: [
         {
-          sourceUrlPrefixes: [
+          matchSourceUrlPrefixes: [
             'https://github.com/foo/bar',
             'https://github.com/renovatebot/',
           ],
@@ -378,11 +417,11 @@ describe('applyPackageRules()', () => {
     const res = applyPackageRules({ ...config, ...dep });
     expect(res.x).toBe(1);
   });
-  it('non-matches sourceUrlPrefixes', () => {
+  it('non-matches matchSourceUrlPrefixes', () => {
     const config: TestConfig = {
       packageRules: [
         {
-          sourceUrlPrefixes: [
+          matchSourceUrlPrefixes: [
             'https://github.com/foo/bar',
             'https://github.com/renovatebot/',
           ],
@@ -399,11 +438,11 @@ describe('applyPackageRules()', () => {
     const res = applyPackageRules({ ...config, ...dep });
     expect(res.x).toBeUndefined();
   });
-  it('handles sourceUrlPrefixes when missing sourceUrl', () => {
+  it('handles matchSourceUrlPrefixes when missing sourceUrl', () => {
     const config: TestConfig = {
       packageRules: [
         {
-          sourceUrlPrefixes: [
+          matchSourceUrlPrefixes: [
             'https://github.com/foo/bar',
             'https://github.com/renovatebot/',
           ],
@@ -423,7 +462,7 @@ describe('applyPackageRules()', () => {
     const config: TestConfig = {
       packageRules: [
         {
-          depTypeList: ['dependencies', 'peerDependencies'],
+          matchDepTypes: ['dependencies', 'peerDependencies'],
           x: 1,
         },
       ],
@@ -439,8 +478,8 @@ describe('applyPackageRules()', () => {
     const config: TestConfig = {
       packageRules: [
         {
-          depTypeList: ['dependencies', 'peerDependencies'],
-          packageNames: ['a'],
+          matchDepTypes: ['dependencies', 'peerDependencies'],
+          matchPackageNames: ['a'],
           x: 1,
         },
       ],
@@ -456,7 +495,7 @@ describe('applyPackageRules()', () => {
     const config: TestConfig = {
       packageRules: [
         {
-          packageNames: ['test'],
+          matchPackageNames: ['test'],
           matchCurrentVersion: '<= 2.0.0',
           x: 1,
         },
@@ -467,7 +506,7 @@ describe('applyPackageRules()', () => {
       ...{
         depName: 'test',
         currentValue: '^1.0.0',
-        fromVersion: '1.0.3',
+        currentVersion: '1.0.3',
       },
     });
     expect(res1.x).toBeDefined();
@@ -484,7 +523,7 @@ describe('applyPackageRules()', () => {
     const config: TestConfig = {
       packageRules: [
         {
-          packageNames: ['test'],
+          matchPackageNames: ['test'],
           matchCurrentVersion: '>= 2.0.0',
           x: 1,
         },
@@ -495,7 +534,7 @@ describe('applyPackageRules()', () => {
       ...{
         depName: 'test',
         currentValue: '2.4.6',
-        fromVersion: '2.4.6',
+        currentVersion: '2.4.6',
       },
     });
     expect(res1.x).toBeDefined();
@@ -504,7 +543,7 @@ describe('applyPackageRules()', () => {
     const config: TestConfig = {
       packageRules: [
         {
-          packageNames: ['test'],
+          matchPackageNames: ['test'],
           matchCurrentVersion: '2.1.0',
           x: 1,
         },
@@ -531,7 +570,7 @@ describe('applyPackageRules()', () => {
     const config: TestConfig = {
       packageRules: [
         {
-          packageNames: ['test'],
+          matchPackageNames: ['test'],
           matchCurrentVersion: '4.6.0',
           x: 1,
         },
@@ -542,7 +581,7 @@ describe('applyPackageRules()', () => {
       ...{
         depName: 'test',
         currentValue: '4.6.0',
-        fromVersion: '4.6.0',
+        currentVersion: '4.6.0',
       },
     });
     expect(res1.x).toBeDefined();
@@ -551,7 +590,7 @@ describe('applyPackageRules()', () => {
     const config: TestConfig = {
       packageRules: [
         {
-          packageNames: ['test'],
+          matchPackageNames: ['test'],
           matchCurrentVersion: '/^4/',
           x: 1,
         },
@@ -562,7 +601,7 @@ describe('applyPackageRules()', () => {
       ...{
         depName: 'test',
         currentValue: '4.6.0',
-        fromVersion: '4.6.0',
+        currentVersion: '4.6.0',
       },
     });
     const res2 = applyPackageRules({
@@ -570,7 +609,7 @@ describe('applyPackageRules()', () => {
       ...{
         depName: 'test',
         currentValue: '5.6.0',
-        fromVersion: '5.6.0',
+        currentVersion: '5.6.0',
       },
     });
     expect(res1.x).toBeDefined();
@@ -580,7 +619,7 @@ describe('applyPackageRules()', () => {
     const config: TestConfig = {
       packageRules: [
         {
-          packageNames: ['test'],
+          matchPackageNames: ['test'],
           matchCurrentVersion: '!/^4/',
           x: 1,
         },
@@ -591,7 +630,7 @@ describe('applyPackageRules()', () => {
       ...{
         depName: 'test',
         currentValue: '4.6.0',
-        fromVersion: '4.6.0',
+        currentVersion: '4.6.0',
       },
     });
     const res2 = applyPackageRules({
@@ -599,18 +638,54 @@ describe('applyPackageRules()', () => {
       ...{
         depName: 'test',
         currentValue: '5.6.0',
-        fromVersion: '5.6.0',
+        currentVersion: '5.6.0',
       },
     });
     expect(res1.x).toBeUndefined();
     expect(res2.x).toBeDefined();
+  });
+  it('matches packageFiles', () => {
+    const config: TestConfig = {
+      packageFile: 'examples/foo/package.json',
+      packageRules: [
+        {
+          matchFiles: ['package.json'],
+          x: 1,
+        },
+      ],
+    };
+    const res1 = applyPackageRules({
+      ...config,
+      depName: 'test',
+    });
+    expect(res1.x).toBeUndefined();
+    config.packageFile = 'package.json';
+    const res2 = applyPackageRules({
+      ...config,
+      depName: 'test',
+    });
+    expect(res2.x).toBeDefined();
+  });
+  it('matches lock files', () => {
+    const config: TestConfig = {
+      packageFile: 'examples/foo/package.json',
+      lockFiles: ['yarn.lock'],
+      packageRules: [
+        {
+          matchFiles: ['yarn.lock'],
+          x: 1,
+        },
+      ],
+    };
+    const res = applyPackageRules(config);
+    expect(res.x).toBeDefined();
   });
   it('matches paths', () => {
     const config: TestConfig = {
       packageFile: 'examples/foo/package.json',
       packageRules: [
         {
-          paths: ['examples/**', 'lib/'],
+          matchPaths: ['examples/**', 'lib/'],
           x: 1,
         },
       ],
@@ -634,8 +709,28 @@ describe('applyPackageRules()', () => {
     expect(res3.x).toBeDefined();
   });
   it('empty rules', () => {
+    // FIXME: explicit assert condition
     expect(
       applyPackageRules({ ...config1, packageRules: null })
     ).toMatchSnapshot();
+  });
+
+  it('creates groupSlug if necessary', () => {
+    const config: TestConfig = {
+      depName: 'foo',
+      packageRules: [
+        {
+          matchPackagePatterns: ['*'],
+          groupName: 'A',
+          groupSlug: 'a',
+        },
+        {
+          matchPackagePatterns: ['*'],
+          groupName: 'B',
+        },
+      ],
+    };
+    const res = applyPackageRules(config);
+    expect(res.groupSlug).toBe('b');
   });
 });

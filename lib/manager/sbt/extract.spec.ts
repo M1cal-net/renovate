@@ -1,31 +1,15 @@
-import { readFileSync } from 'fs';
-import { resolve } from 'upath';
+import { loadFixture } from '../../../test/util';
 import { extractPackageFile } from './extract';
 
-const sbt = readFileSync(
-  resolve(__dirname, `./__fixtures__/sample.sbt`),
-  'utf8'
-);
-const sbtScalaVersionVariable = readFileSync(
-  resolve(__dirname, `./__fixtures__/scala-version-variable.sbt`),
-  'utf8'
-);
-const sbtMissingScalaVersion = readFileSync(
-  resolve(__dirname, `./__fixtures__/missing-scala-version.sbt`),
-  'utf8'
+const sbt = loadFixture(`sample.sbt`);
+const sbtScalaVersionVariable = loadFixture(`scala-version-variable.sbt`);
+const sbtMissingScalaVersion = loadFixture(`missing-scala-version.sbt`);
+const sbtDependencyFile = loadFixture(`dependency-file.scala`);
+const sbtPrivateVariableDependencyFile = loadFixture(
+  `private-variable-dependency-file.scala`
 );
 
-const sbtDependencyFile = readFileSync(
-  resolve(__dirname, `./__fixtures__/dependency-file.scala`),
-  'utf8'
-);
-
-const sbtPrivateVariableDependencyFile = readFileSync(
-  resolve(__dirname, `./__fixtures__/private-variable-dependency-file.scala`),
-  'utf8'
-);
-
-describe('lib/manager/sbt/extract', () => {
+describe('manager/sbt/extract', () => {
   describe('extractPackageFile()', () => {
     it('returns null for empty', () => {
       expect(extractPackageFile(null)).toBeNull();
@@ -53,15 +37,19 @@ describe('lib/manager/sbt/extract', () => {
       ).toBeNull();
     });
     it('extracts deps for generic use-cases', () => {
+      // FIXME: explicit assert condition
       expect(extractPackageFile(sbt)).toMatchSnapshot();
     });
     it('extracts deps when scala version is defined in a variable', () => {
+      // FIXME: explicit assert condition
       expect(extractPackageFile(sbtScalaVersionVariable)).toMatchSnapshot();
     });
     it('skips deps when scala version is missing', () => {
+      // FIXME: explicit assert condition
       expect(extractPackageFile(sbtMissingScalaVersion)).toMatchSnapshot();
     });
     it('extract deps from native scala file with variables', () => {
+      // FIXME: explicit assert condition
       expect(extractPackageFile(sbtDependencyFile)).toMatchSnapshot();
     });
     it('extracts deps when scala version is defined with a trailing comma', () => {
@@ -71,6 +59,7 @@ describe('lib/manager/sbt/extract', () => {
         )
         libraryDependencies += "org.example" %% "bar" % "0.0.2"
       `;
+      // FIXME: explicit assert condition
       expect(extractPackageFile(content)).toMatchSnapshot();
     });
     it('extracts deps when scala version is defined in a variable with a trailing comma', () => {
@@ -81,9 +70,11 @@ describe('lib/manager/sbt/extract', () => {
         )
         libraryDependencies += "org.example" %% "bar" % "0.0.2"
       `;
+      // FIXME: explicit assert condition
       expect(extractPackageFile(content)).toMatchSnapshot();
     });
     it('extract deps from native scala file with private variables', () => {
+      // FIXME: explicit assert condition
       expect(
         extractPackageFile(sbtPrivateVariableDependencyFile)
       ).toMatchSnapshot();

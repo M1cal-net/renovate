@@ -4,10 +4,11 @@ import semver from 'semver';
 import { mergeChildConfig } from '../../../config';
 import { CONFIG_SECRETS_EXPOSED } from '../../../constants/error-messages';
 import { logger } from '../../../logger';
+import { regEx } from '../../../util/regex';
 import { sanitize } from '../../../util/sanitize';
 import * as template from '../../../util/template';
-import { BranchConfig, BranchUpgradeConfig } from '../../common';
-import { formatCommitMessagePrefix } from '../util/commit-message';
+import type { BranchConfig, BranchUpgradeConfig } from '../../types';
+import { CommitMessage } from '../model/commit-message';
 
 function isTypesGroup(branchUpgrades: BranchUpgradeConfig[]): boolean {
   return (
@@ -35,30 +36,19 @@ function getTableValues(
   if (!upgrade.commitBodyTable) {
     return null;
   }
-  const {
-    datasource,
-    lookupName,
-    depName,
-    fromVersion,
-    toVersion,
-    displayFrom,
-    displayTo,
-  } = upgrade;
+  const { datasource, lookupName, depName, currentVersion, newVersion } =
+    upgrade;
   const name = lookupName || depName;
-  const from = fromVersion || displayFrom;
-  const to = toVersion || displayTo;
-  if (datasource && name && from && to) {
-    return [datasource, name, from, to];
+  if (datasource && name && currentVersion && newVersion) {
+    return [datasource, name, currentVersion, newVersion];
   }
   logger.debug(
     {
       datasource,
       lookupName,
       depName,
-      fromVersion,
-      toVersion,
-      displayFrom,
-      displayTo,
+      currentVersion,
+      newVersion,
     },
     'Cannot determine table values'
   );
@@ -66,8 +56,13 @@ function getTableValues(
 }
 
 export function generateBranchConfig(
-  branchUpgrades: BranchUpgradeConfig[]
+  upgrades: BranchUpgradeConfig[]
 ): BranchConfig {
+  let branchUpgrades = upgrades;
+  if (!branchUpgrades.every((upgrade) => upgrade.pendingChecks)) {
+    // If the branch isn't pending, then remove any upgrades within which *are*
+    branchUpgrades = branchUpgrades.filter((upgrade) => !upgrade.pendingChecks);
+  }
   logger.trace({ config: branchUpgrades }, 'generateBranchConfig');
   let config: BranchConfig = {
     upgrades: [],
@@ -82,8 +77,8 @@ export function generateBranchConfig(
     if (!depNames.includes(upg.depName)) {
       depNames.push(upg.depName);
     }
-    if (!toVersions.includes(upg.toVersion)) {
-      toVersions.push(upg.toVersion);
+    if (!toVersions.includes(upg.newVersion)) {
+      toVersions.push(upg.newVersion);
     }
     if (upg.commitMessageExtra) {
       const extra = template.compile(upg.commitMessageExtra, upg);
@@ -97,7 +92,6 @@ export function generateBranchConfig(
     toVersions.length > 1 ||
     (!toVersions[0] && newValue.length > 1);
   if (newValue.length > 1 && !groupEligible) {
-    // eslint-disable-next-line no-param-reassign
     branchUpgrades[0].commitMessageExtra = `to v${toVersions[0]}`;
   }
   const typesGroup =
@@ -118,36 +112,18 @@ export function generateBranchConfig(
         upgrade.newDigestShort ||
         upgrade.newDigest.replace('sha256:', '').substring(0, 7);
     }
-    if (!upgrade.displayFrom) {
-      if (upgrade.currentValue === upgrade.newValue) {
-        upgrade.displayFrom =
-          upgrade.currentDigestShort || upgrade.currentVersion || '';
-        upgrade.displayTo =
-          upgrade.displayTo ||
-          upgrade.newDigestShort ||
-          upgrade.newVersion ||
-          '';
-      } else {
-        upgrade.displayFrom =
-          upgrade.currentValue ||
-          upgrade.currentVersion ||
-          upgrade.currentDigestShort ||
-          '';
-        upgrade.displayTo =
-          upgrade.displayTo ||
-          upgrade.newValue ||
-          upgrade.newVersion ||
-          upgrade.newDigestShort ||
-          '';
-      }
+    if (upgrade.isDigest) {
+      upgrade.displayFrom = upgrade.currentDigestShort;
+      upgrade.displayTo = upgrade.newDigestShort;
+    } else if (upgrade.isLockfileUpdate) {
+      upgrade.displayFrom = upgrade.currentVersion;
+      upgrade.displayTo = upgrade.newVersion;
+    } else if (!upgrade.isLockFileMaintenance) {
+      upgrade.displayFrom = upgrade.currentValue;
+      upgrade.displayTo = upgrade.newValue;
     }
-
-    if (
-      upgrade.updateType !== 'lockFileMaintenance' &&
-      upgrade.displayFrom.length * upgrade.displayTo.length === 0
-    ) {
-      logger.debug({ config: upgrade }, 'empty displayFrom/displayTo');
-    }
+    upgrade.displayFrom ??= '';
+    upgrade.displayTo ??= '';
     upgrade.prettyDepType =
       upgrade.prettyDepType || upgrade.depType || 'dependency';
     if (useGroupSettings) {
@@ -182,10 +158,9 @@ export function generateBranchConfig(
           upgrade
         )})`;
       }
-      upgrade.commitMessagePrefix = formatCommitMessagePrefix(semanticPrefix);
+      upgrade.commitMessagePrefix = CommitMessage.formatPrefix(semanticPrefix);
       upgrade.toLowerCase =
-        // eslint-disable-next-line @typescript-eslint/prefer-regexp-exec
-        upgrade.semanticCommitType.match(/[A-Z]/) === null &&
+        regEx(/[A-Z]/).exec(upgrade.semanticCommitType) === null && // TODO #12071
         !upgrade.semanticCommitType.startsWith(':');
     }
     // Compile a few times in case there are nested templates
@@ -200,9 +175,9 @@ export function generateBranchConfig(
       throw new Error(CONFIG_SECRETS_EXPOSED);
     }
     upgrade.commitMessage = upgrade.commitMessage.trim(); // Trim exterior whitespace
-    upgrade.commitMessage = upgrade.commitMessage.replace(/\s+/g, ' '); // Trim extra whitespace inside string
+    upgrade.commitMessage = upgrade.commitMessage.replace(regEx(/\s+/g), ' '); // Trim extra whitespace inside string // TODO #12071
     upgrade.commitMessage = upgrade.commitMessage.replace(
-      /to vv(\d)/,
+      regEx(/to vv(\d)/), // TODO #12071
       'to v$1'
     );
     if (upgrade.toLowerCase) {
@@ -224,7 +199,7 @@ export function generateBranchConfig(
       upgrade.prTitle = template
         .compile(upgrade.prTitle, upgrade)
         .trim()
-        .replace(/\s+/g, ' ');
+        .replace(regEx(/\s+/g), ' '); // TODO #12071
       // istanbul ignore if
       if (upgrade.prTitle !== sanitize(upgrade.prTitle)) {
         throw new Error(CONFIG_SECRETS_EXPOSED);
@@ -245,7 +220,10 @@ export function generateBranchConfig(
         upgrade.updateType === 'minor' && upgrade.separateMinorPatch
           ? ' (minor)'
           : '';
-      upgrade.prTitle += upgrade.updateType === 'patch' ? ' (patch)' : '';
+      upgrade.prTitle +=
+        upgrade.updateType === 'patch' && upgrade.separateMinorPatch
+          ? ' (patch)'
+          : '';
     }
     // Compile again to allow for nested templates
     upgrade.prTitle = template.compile(upgrade.prTitle, upgrade);
@@ -256,10 +234,10 @@ export function generateBranchConfig(
         const existingStamp = DateTime.fromISO(releaseTimestamp);
         const upgradeStamp = DateTime.fromISO(upgrade.releaseTimestamp);
         if (upgradeStamp > existingStamp) {
-          releaseTimestamp = upgrade.releaseTimestamp; // eslint-disable-line
+          releaseTimestamp = upgrade.releaseTimestamp;
         }
       } else {
-        releaseTimestamp = upgrade.releaseTimestamp; // eslint-disable-line
+        releaseTimestamp = upgrade.releaseTimestamp;
       }
     }
   }
@@ -297,7 +275,7 @@ export function generateBranchConfig(
     });
   }
   // Now assign first upgrade's config as branch config
-  config = { ...config, ...config.upgrades[0], releaseTimestamp }; // TODO: fixme
+  config = { ...config, ...config.upgrades[0], releaseTimestamp }; // TODO: fixme (#9666)
   config.reuseLockFiles = config.upgrades.every(
     (upgrade) => upgrade.updateType !== 'lockFileMaintenance'
   );
@@ -308,13 +286,30 @@ export function generateBranchConfig(
     (upgrade) => upgrade.prCreation === 'approval'
   );
   config.automerge = config.upgrades.every((upgrade) => upgrade.automerge);
-  config.blockedByPin = config.upgrades.every(
-    (upgrade) => upgrade.blockedByPin
-  );
-  config.constraints = Object.assign(
-    {},
-    ...config.upgrades.map((upgrade) => upgrade.constraints)
-  );
+  // combine all labels
+  config.labels = [
+    ...new Set(
+      config.upgrades
+        .map((upgrade) => upgrade.labels || [])
+        .reduce((a, b) => a.concat(b), [])
+    ),
+  ];
+  config.addLabels = [
+    ...new Set(
+      config.upgrades
+        .map((upgrade) => upgrade.addLabels || [])
+        .reduce((a, b) => a.concat(b), [])
+    ),
+  ];
+  if (config.upgrades.some((upgrade) => upgrade.updateType === 'major')) {
+    config.updateType = 'major';
+  }
+  config.constraints = {};
+  for (const upgrade of config.upgrades || []) {
+    if (upgrade.constraints) {
+      config.constraints = { ...config.constraints, ...upgrade.constraints };
+    }
+  }
   const tableRows = config.upgrades
     .map((upgrade) => getTableValues(upgrade))
     .filter(Boolean);

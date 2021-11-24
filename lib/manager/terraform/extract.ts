@@ -1,34 +1,55 @@
+import is from '@sindresorhus/is';
 import { logger } from '../../logger';
-import { PackageDependency, PackageFile } from '../common';
+import { regEx } from '../../util/regex';
+import type { ExtractConfig, PackageDependency, PackageFile } from '../types';
+import { TerraformDependencyTypes } from './common';
+import { extractLocks, findLockFile, readLockFile } from './lockfile/util';
 import { analyseTerraformModule, extractTerraformModule } from './modules';
 import {
   analyzeTerraformProvider,
   extractTerraformProvider,
 } from './providers';
-import { extractTerraformRequiredProviders } from './required-providers';
+import {
+  analyzeTerraformRequiredProvider,
+  extractTerraformRequiredProviders,
+} from './required-providers';
+import {
+  analyseTerraformVersion,
+  extractTerraformRequiredVersion,
+} from './required-version';
 import {
   analyseTerraformResource,
   extractTerraformResource,
 } from './resources';
+import type { TerraformManagerData } from './types';
 import {
-  TerraformDependencyTypes,
-  TerraformManagerData,
   checkFileContainsDependency,
   getTerraformDependencyType,
 } from './util';
 
-const dependencyBlockExtractionRegex = /^\s*(?<type>[a-z_]+)\s+("(?<lookupName>[^"]+)"\s+)?("(?<terraformName>[^"]+)"\s+)?{\s*$/;
+const dependencyBlockExtractionRegex = regEx(
+  /^\s*(?<type>[a-z_]+)\s+("(?<lookupName>[^"]+)"\s+)?("(?<terraformName>[^"]+)"\s+)?{\s*$/
+);
 const contentCheckList = [
   'module "',
   'provider "',
   'required_providers ',
   ' "helm_release" ',
   ' "docker_image" ',
+  'required_version',
 ];
 
-export function extractPackageFile(content: string): PackageFile | null {
+export async function extractPackageFile(
+  content: string,
+  fileName: string,
+  config: ExtractConfig
+): Promise<PackageFile | null> {
   logger.trace({ content }, 'terraform.extractPackageFile()');
   if (!checkFileContainsDependency(content, contentCheckList)) {
+    logger.trace(
+      { fileName },
+      'preflight content check has not found any relevant content'
+    );
     return null;
   }
   let deps: PackageDependency<TerraformManagerData>[] = [];
@@ -70,6 +91,10 @@ export function extractPackageFile(content: string): PackageFile | null {
             result = extractTerraformResource(lineNumber, lines);
             break;
           }
+          case TerraformDependencyTypes.terraform_version: {
+            result = extractTerraformRequiredVersion(lineNumber, lines);
+            break;
+          }
           /* istanbul ignore next */
           default:
             logger.trace(
@@ -87,11 +112,26 @@ export function extractPackageFile(content: string): PackageFile | null {
   } catch (err) /* istanbul ignore next */ {
     logger.warn({ err }, 'Error extracting terraform plugins');
   }
+
+  const locks = [];
+  const lockFilePath = findLockFile(fileName);
+  if (lockFilePath) {
+    const lockFileContent = await readLockFile(lockFilePath);
+    if (lockFileContent) {
+      const extractedLocks = extractLocks(lockFileContent);
+      if (is.nonEmptyArray(extractedLocks)) {
+        locks.push(...extractedLocks);
+      }
+    }
+  }
+
   deps.forEach((dep) => {
     switch (dep.managerData.terraformDependencyType) {
       case TerraformDependencyTypes.required_providers:
+        analyzeTerraformRequiredProvider(dep, locks);
+        break;
       case TerraformDependencyTypes.provider:
-        analyzeTerraformProvider(dep);
+        analyzeTerraformProvider(dep, locks);
         break;
       case TerraformDependencyTypes.module:
         analyseTerraformModule(dep);
@@ -99,10 +139,13 @@ export function extractPackageFile(content: string): PackageFile | null {
       case TerraformDependencyTypes.resource:
         analyseTerraformResource(dep);
         break;
+      case TerraformDependencyTypes.terraform_version:
+        analyseTerraformVersion(dep);
+        break;
       /* istanbul ignore next */
       default:
     }
-    // eslint-disable-next-line no-param-reassign
+
     delete dep.managerData;
   });
   if (deps.some((dep) => dep.skipReason !== 'local')) {

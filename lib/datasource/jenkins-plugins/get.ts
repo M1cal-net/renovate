@@ -1,9 +1,16 @@
 import { logger } from '../../logger';
 import { ExternalHostError } from '../../types/errors/external-host-error';
 import { clone } from '../../util/clone';
+import { getElapsedMinutes } from '../../util/date';
 import { Http } from '../../util/http';
-import { GetReleasesConfig, Release, ReleaseResult } from '../common';
+import type { GetReleasesConfig, Release, ReleaseResult } from '../types';
 import { id } from './common';
+import type {
+  JenkinsCache,
+  JenkinsCacheTypes,
+  JenkinsPluginsInfoResponse,
+  JenkinsPluginsVersionsResponse,
+} from './types';
 
 const http = new Http(id);
 
@@ -12,41 +19,8 @@ const packageInfoUrl =
 const packageVersionsUrl =
   'https://updates.jenkins.io/current/plugin-versions.json';
 
-type JenkinsCacheTypes = ReleaseResult | Release[];
-
-interface JenkinsCache<T> {
-  name: string;
-  dataUrl: string;
-  lastSync: Date;
-  cacheTimeMin: number;
-  cache: Record<string, T>;
-  updatePromise?: Promise<void> | undefined;
-}
-
-interface JenkinsPluginInfo {
-  name: string;
-  scm?: string;
-}
-
-interface JenkinsPluginVersion {
-  version: string;
-  buildDate?: string;
-  url?: string;
-}
-
-interface JenkinsPluginsInfoResponse {
-  plugins: Record<string, JenkinsPluginInfo>;
-}
-
-interface JenkinsPluginsVersionsResponse {
-  plugins: Record<string, Record<string, JenkinsPluginVersion>>;
-}
-
 function hasCacheExpired(cache: JenkinsCache<JenkinsCacheTypes>): boolean {
-  const minutesElapsed = Math.floor(
-    (new Date().getTime() - cache.lastSync.getTime()) / (60 * 1000)
-  );
-  return minutesElapsed >= cache.cacheTimeMin;
+  return getElapsedMinutes(cache.lastSync) >= cache.cacheTimeMin;
 }
 
 async function updateJenkinsCache(
@@ -54,13 +28,12 @@ async function updateJenkinsCache(
   updateHandler: () => Promise<void>
 ): Promise<void> {
   if (hasCacheExpired(cache)) {
-    // eslint-disable-next-line no-param-reassign
     cache.updatePromise =
       // eslint-disable-next-line @typescript-eslint/no-misused-promises
       cache.updatePromise || updateHandler();
     await cache.updatePromise;
 
-    cache.updatePromise = null; // eslint-disable-line no-param-reassign
+    cache.updatePromise = null;
   }
 }
 
@@ -69,9 +42,7 @@ function updateJenkinsPluginInfoCacheCallback(
   cache: JenkinsCache<ReleaseResult>
 ): void {
   for (const name of Object.keys(response.plugins || [])) {
-    // eslint-disable-next-line no-param-reassign
     cache.cache[name] = {
-      name,
       releases: [], // releases are stored in another cache
       sourceUrl: response.plugins[name]?.scm,
     };
@@ -84,7 +55,6 @@ function updateJenkinsPluginVersionsCacheCallback(
 ): void {
   const plugins = response.plugins;
   for (const name of Object.keys(plugins || [])) {
-    // eslint-disable-next-line no-param-reassign
     cache.cache[name] = Object.keys(plugins[name]).map((version) => ({
       version,
       downloadUrl: plugins[name][version]?.url,
@@ -116,7 +86,6 @@ async function getJenkinsUpdateCenterResponse<T>(
       `jenkins-plugins: Fetched Jenkins plugins ${cache.name}`
     );
   } catch (err) /* istanbul ignore next */ {
-    // eslint-disable-next-line no-param-reassign
     cache.cache = Object.create(null);
     throw new ExternalHostError(
       new Error(`jenkins-plugins: Fetch plugins ${cache.name} error`)
@@ -128,14 +97,14 @@ async function getJenkinsUpdateCenterResponse<T>(
 
 async function updateJenkinsPluginCache<T>(
   cache: JenkinsCache<JenkinsCacheTypes>,
-  // eslint-disable-next-line @typescript-eslint/no-shadow
+
   callback: (resp: T, cache: JenkinsCache<any>) => void
 ): Promise<void> {
   const response = await getJenkinsUpdateCenterResponse<T>(cache);
   if (response) {
     callback(response, cache);
   }
-  cache.lastSync = new Date(); // eslint-disable-line no-param-reassign
+  cache.lastSync = new Date();
 }
 
 const pluginInfoCache: JenkinsCache<ReleaseResult> = {
@@ -196,9 +165,8 @@ export function getReleases({
 }
 
 function resetJenkinsCache(cache: JenkinsCache<JenkinsCacheTypes>): void {
-  // eslint-disable-next-line no-param-reassign
   cache.lastSync = new Date('2000-01-01');
-  cache.cache = Object.create(null); // eslint-disable-line no-param-reassign
+  cache.cache = Object.create(null);
 }
 
 // Note: use only for tests

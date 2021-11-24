@@ -1,33 +1,49 @@
 import { logger } from '../../logger';
-import { ExternalHostError } from '../../types/errors/external-host-error';
-import { Http } from '../../util/http';
-import { GetReleasesConfig, ReleaseResult } from '../common';
+import { cache } from '../../util/cache/package/decorator';
+import type { HttpResponse } from '../../util/http';
+import * as hexVersioning from '../../versioning/hex';
+import { Datasource } from '../datasource';
+import type { GetReleasesConfig, ReleaseResult } from '../types';
+import type { HexRelease } from './types';
 
-export const id = 'hex';
+export class HexDatasource extends Datasource {
+  static readonly id = 'hex';
 
-const http = new Http(id);
+  constructor() {
+    super(HexDatasource.id);
+  }
 
-interface HexRelease {
-  html_url: string;
-  meta?: { links?: Record<string, string> };
-  releases?: {
-    version: string;
-    inserted_at?: string;
-  }[];
-}
+  override readonly defaultRegistryUrls = ['https://hex.pm/'];
 
-export async function getReleases({
-  lookupName,
-}: GetReleasesConfig): Promise<ReleaseResult | null> {
-  // Get dependency name from lookupName.
-  // If the dependency is private lookupName contains organization name as following:
-  // hexPackageName:organizationName
-  // hexPackageName is used to pass it in hex dep url
-  // organizationName is used for accessing to private deps
-  const hexPackageName = lookupName.split(':')[0];
-  const hexUrl = `https://hex.pm/api/packages/${hexPackageName}`;
-  try {
-    const response = await http.getJson<HexRelease>(hexUrl);
+  override readonly customRegistrySupport = false;
+
+  override readonly defaultVersioning = hexVersioning.id;
+
+  @cache({
+    namespace: `datasource-${HexDatasource.id}`,
+    key: ({ lookupName }: GetReleasesConfig) => lookupName,
+  })
+  async getReleases({
+    lookupName,
+    registryUrl,
+  }: GetReleasesConfig): Promise<ReleaseResult | null> {
+    // Get dependency name from lookupName.
+    // If the dependency is private lookupName contains organization name as following:
+    // hexPackageName:organizationName
+    // hexPackageName is used to pass it in hex dep url
+    // organizationName is used for accessing to private deps
+    const [hexPackageName, organizationName] = lookupName.split(':');
+    const organizationUrlPrefix = organizationName
+      ? `repos/${organizationName}/`
+      : '';
+    const hexUrl = `${registryUrl}api/${organizationUrlPrefix}packages/${hexPackageName}`;
+
+    let response: HttpResponse<HexRelease>;
+    try {
+      response = await this.http.getJson<HexRelease>(hexUrl);
+    } catch (err) {
+      this.handleGenericErrors(err);
+    }
 
     const hexRelease: HexRelease = response.body;
 
@@ -63,13 +79,5 @@ export async function getReleases({
     }
 
     return result;
-  } catch (err) {
-    if (
-      err.statusCode === 429 ||
-      (err.statusCode >= 500 && err.statusCode < 600)
-    ) {
-      throw new ExternalHostError(err);
-    }
-    throw err;
   }
 }

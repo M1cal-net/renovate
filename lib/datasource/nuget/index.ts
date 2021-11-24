@@ -1,21 +1,26 @@
 import urlApi from 'url';
 import { logger } from '../../logger';
-import { GetReleasesConfig, ReleaseResult } from '../common';
+import { regEx } from '../../util/regex';
+import * as nugetVersioning from '../../versioning/nuget';
+import type { GetReleasesConfig, ReleaseResult } from '../types';
 import * as v2 from './v2';
 import * as v3 from './v3';
 
 export { id } from './common';
 
+export const customRegistrySupport = true;
 export const defaultRegistryUrls = [v3.getDefaultFeed()];
+export const defaultVersioning = nugetVersioning.id;
 export const registryStrategy = 'merge';
 
-function parseRegistryUrl(
-  registryUrl: string
-): { feedUrl: string; protocolVersion: number } {
+export function parseRegistryUrl(registryUrl: string): {
+  feedUrl: string;
+  protocolVersion: number;
+} {
   try {
     const parsedUrl = urlApi.parse(registryUrl);
     let protocolVersion = 2;
-    const protocolVersionRegExp = /#protocolVersion=(2|3)/;
+    const protocolVersionRegExp = regEx(/#protocolVersion=(2|3)/);
     const protocolVersionMatch = protocolVersionRegExp.exec(parsedUrl.hash);
     if (protocolVersionMatch) {
       parsedUrl.hash = '';

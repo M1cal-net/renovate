@@ -1,44 +1,25 @@
-import { readFileSync } from 'fs';
-import { mocked } from '../../../test/util';
+import { loadFixture, mocked } from '../../../test/util';
 import * as _hostRules from '../../util/host-rules';
 import { extractPackageFile } from './extract';
 
 jest.mock('../../util/host-rules');
 const hostRules = mocked(_hostRules);
-
 const filename = '.pre-commit.yaml';
 
-const complexPrecommitConfig = readFileSync(
-  'lib/manager/pre-commit/__fixtures__/complex.pre-commit-config.yaml',
-  'utf8'
+const complexPrecommitConfig = loadFixture('complex.pre-commit-config.yaml');
+const examplePrecommitConfig = loadFixture('.pre-commit-config.yaml');
+const emptyReposPrecommitConfig = loadFixture(
+  'empty_repos.pre-commit-config.yaml'
+);
+const noReposPrecommitConfig = loadFixture('no_repos.pre-commit-config.yaml');
+const invalidRepoPrecommitConfig = loadFixture(
+  'invalid_repo.pre-commit-config.yaml'
+);
+const enterpriseGitPrecommitConfig = loadFixture(
+  'enterprise.pre-commit-config.yaml'
 );
 
-const examplePrecommitConfig = readFileSync(
-  'lib/manager/pre-commit/__fixtures__/.pre-commit-config.yaml',
-  'utf8'
-);
-
-const emptyReposPrecommitConfig = readFileSync(
-  'lib/manager/pre-commit/__fixtures__/empty_repos.pre-commit-config.yaml',
-  'utf8'
-);
-
-const noReposPrecommitConfig = readFileSync(
-  'lib/manager/pre-commit/__fixtures__/no_repos.pre-commit-config.yaml',
-  'utf8'
-);
-
-const invalidRepoPrecommitConfig = readFileSync(
-  'lib/manager/pre-commit/__fixtures__/invalid_repo.pre-commit-config.yaml',
-  'utf8'
-);
-
-const enterpriseGitPrecommitConfig = readFileSync(
-  'lib/manager/pre-commit/__fixtures__/enterprise.pre-commit-config.yaml',
-  'utf8'
-);
-
-describe('lib/manager/precommit/extract', () => {
+describe('manager/pre-commit/extract', () => {
   describe('extractPackageFile()', () => {
     beforeEach(() => {
       jest.resetAllMocks();
@@ -69,20 +50,24 @@ describe('lib/manager/precommit/extract', () => {
     });
     it('extracts from values.yaml correctly with same structure as "pre-commit sample-config"', () => {
       const result = extractPackageFile(examplePrecommitConfig, filename);
+      // FIXME: explicit assert condition
       expect(result).toMatchSnapshot();
     });
     it('extracts from complex config file correctly', () => {
       const result = extractPackageFile(complexPrecommitConfig, filename);
+      // FIXME: explicit assert condition
       expect(result).toMatchSnapshot();
     });
     it('can handle private git repos', () => {
       hostRules.find.mockReturnValue({ token: 'value' });
       const result = extractPackageFile(enterpriseGitPrecommitConfig, filename);
+      // FIXME: explicit assert condition
       expect(result).toMatchSnapshot();
     });
     it('can handle invalid private git repos', () => {
       hostRules.find.mockReturnValue({});
       const result = extractPackageFile(enterpriseGitPrecommitConfig, filename);
+      // FIXME: explicit assert condition
       expect(result).toMatchSnapshot();
     });
     it('can handle unknown private git repos', () => {
@@ -91,6 +76,7 @@ describe('lib/manager/precommit/extract', () => {
       // But all subsequent checks (those with hostType), then fail:
       hostRules.find.mockReturnValue({});
       const result = extractPackageFile(enterpriseGitPrecommitConfig, filename);
+      // FIXME: explicit assert condition
       expect(result).toMatchSnapshot();
     });
   });

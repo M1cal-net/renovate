@@ -1,15 +1,17 @@
 import URL from 'url';
 import is from '@sindresorhus/is';
+import JSON5 from 'json5';
 import parseDiff from 'parse-diff';
+import { PlatformId } from '../../constants';
 import { REPOSITORY_NOT_FOUND } from '../../constants/error-messages';
-import { PLATFORM_TYPE_BITBUCKET } from '../../constants/platforms';
 import { logger } from '../../logger';
-import { BranchStatus, PrState } from '../../types';
+import { BranchStatus, PrState, VulnerabilityAlert } from '../../types';
 import * as git from '../../util/git';
 import * as hostRules from '../../util/host-rules';
 import { BitbucketHttp, setBaseUrl } from '../../util/http/bitbucket';
+import { regEx } from '../../util/regex';
 import { sanitize } from '../../util/sanitize';
-import {
+import type {
   BranchStatusConfig,
   CreatePRConfig,
   EnsureCommentConfig,
@@ -18,19 +20,25 @@ import {
   EnsureIssueResult,
   FindPRConfig,
   Issue,
+  MergePRConfig,
   PlatformParams,
   PlatformResult,
   Pr,
   RepoParams,
   RepoResult,
   UpdatePrConfig,
-  VulnerabilityAlert,
-} from '../common';
+} from '../types';
 import { smartTruncate } from '../utils/pr-body';
 import { readOnlyIssueBody } from '../utils/read-only-issue-body';
 import * as comments from './comments';
 import * as utils from './utils';
-import { PrResponse, RepoInfoBody } from './utils';
+import {
+  PrResponse,
+  PrReviewer,
+  RepoInfoBody,
+  UserResponse,
+  mergeBodyTransformer,
+} from './utils';
 
 const bitbucketHttp = new BitbucketHttp();
 
@@ -79,7 +87,7 @@ export async function initPlatform({
       logger.debug({ err }, 'Unknown error fetching Bitbucket user identity');
     }
   }
-  // TODO: Add a connection check that endpoint/username/password combination are valid
+  // TODO: Add a connection check that endpoint/username/password combination are valid (#9594)
   const platformConfig: PlatformResult = {
     endpoint: endpoint || BITBUCKET_PROD_ENDPOINT,
   };
@@ -100,28 +108,37 @@ export async function getRepos(): Promise<string[]> {
   }
 }
 
-export async function getJsonFile(fileName: string): Promise<any | null> {
-  try {
-    return (
-      await bitbucketHttp.getJson(
-        `/2.0/repositories/${config.repository}/src/${config.defaultBranch}/${fileName}`
-      )
-    ).body;
-  } catch (err) {
-    return null;
+export async function getRawFile(
+  fileName: string,
+  repo: string = config.repository
+): Promise<string | null> {
+  // See: https://developer.atlassian.com/bitbucket/api/2/reference/resource/repositories/%7Bworkspace%7D/%7Brepo_slug%7D/src/%7Bcommit%7D/%7Bpath%7D
+  const path = fileName;
+  const url = `/2.0/repositories/${repo}/src/HEAD/${path}`;
+  const res = await bitbucketHttp.get(url);
+  return res.body;
+}
+
+export async function getJsonFile(
+  fileName: string,
+  repo: string = config.repository
+): Promise<any | null> {
+  const raw = await getRawFile(fileName, repo);
+  if (fileName.endsWith('.json5')) {
+    return JSON5.parse(raw);
   }
+  return JSON.parse(raw);
 }
 
 // Initialize bitbucket by getting base branch and SHA
 export async function initRepo({
   repository,
-  localDir,
   cloneSubmodules,
   ignorePrAuthor,
 }: RepoParams): Promise<RepoResult> {
   logger.debug(`initRepo("${repository}")`);
   const opts = hostRules.find({
-    hostType: PLATFORM_TYPE_BITBUCKET,
+    hostType: PlatformId.Bitbucket,
     url: defaults.endpoint,
   });
   config = {
@@ -140,11 +157,12 @@ export async function initRepo({
     );
     config.defaultBranch = info.mainbranch;
 
-    Object.assign(config, {
+    config = {
+      ...config,
       owner: info.owner,
       mergeMethod: info.mergeMethod,
       has_issues: info.has_issues,
-    });
+    };
 
     logger.debug(`${repository} owner = ${config.owner}`);
   } catch (err) /* istanbul ignore next */ {
@@ -160,7 +178,7 @@ export async function initRepo({
   // Converts API hostnames to their respective HTTP git hosts:
   // `api.bitbucket.org`  to `bitbucket.org`
   // `api-staging.<host>` to `staging.<host>`
-  const hostnameWithoutApiPrefix = /api[.|-](.+)/.exec(hostname)[1];
+  const hostnameWithoutApiPrefix = regEx(/api[.|-](.+)/).exec(hostname)[1];
 
   const url = git.getUrl({
     protocol: 'https',
@@ -171,10 +189,7 @@ export async function initRepo({
 
   await git.initRepo({
     ...config,
-    localDir,
     url,
-    gitAuthorName: global.gitAuthor?.name,
-    gitAuthorEmail: global.gitAuthor?.email,
     cloneSubmodules,
   });
   const repoConfig: RepoResult = {
@@ -186,7 +201,7 @@ export async function initRepo({
 
 // Returns true if repository has rule enforcing PRs are up-to-date with base branch before merging
 export function getRepoForceRebase(): Promise<boolean> {
-  // BB doesnt have an option to flag staled branches
+  // BB doesn't have an option to flag staled branches
   return Promise.resolve(false);
 }
 
@@ -207,15 +222,11 @@ export async function getPrList(): Promise<Pr[]> {
     logger.debug('Retrieving PR list');
     let url = `/2.0/repositories/${config.repository}/pullrequests?`;
     url += utils.prStates.all.map((state) => 'state=' + state).join('&');
+    if (renovateUserUuid && !config.ignorePrAuthor) {
+      url += `&q=author.uuid="${renovateUserUuid}"`;
+    }
     const prs = await utils.accumulateValues(url, undefined, undefined, 50);
-    config.prList = prs
-      .filter((pr) => {
-        const prAuthorId = pr?.author?.uuid;
-        return renovateUserUuid && prAuthorId && !config.ignorePrAuthor
-          ? renovateUserUuid === prAuthorId
-          : true;
-      })
-      .map(utils.prInfo);
+    config.prList = prs.map(utils.prInfo);
     logger.debug({ length: config.prList.length }, 'Retrieved Pull Requests');
   }
   return config.prList;
@@ -271,7 +282,7 @@ export async function getPr(prNo: number): Promise<Pr | null> {
   if (utils.prStates.open.includes(pr.state)) {
     res.isConflicted = await isPrConflicted(prNo);
 
-    // TODO: Is that correct? Should we check getBranchStatus like gitlab?
+    // TODO: Is that correct? Should we check getBranchStatus like gitlab? (#9618)
     res.canMerge = !res.isConflicted;
   }
   res.hasReviewers = is.nonEmptyArray(pr.reviewers);
@@ -280,7 +291,7 @@ export async function getPr(prNo: number): Promise<Pr | null> {
 }
 
 const escapeHash = (input: string): string =>
-  input ? input.replace(/#/g, '%23') : input;
+  input ? input.replace(regEx(/#/g), '%23') : input;
 
 interface BranchResponse {
   target: {
@@ -328,20 +339,9 @@ async function getStatus(
 }
 // Returns the combined status for a branch.
 export async function getBranchStatus(
-  branchName: string,
-  requiredStatusChecks?: string[]
+  branchName: string
 ): Promise<BranchStatus> {
   logger.debug(`getBranchStatus(${branchName})`);
-  if (!requiredStatusChecks) {
-    // null means disable status checks, so it always succeeds
-    logger.debug('Status checks disabled = returning "success"');
-    return BranchStatus.green;
-  }
-  if (requiredStatusChecks.length) {
-    // This is Unsupported
-    logger.warn({ requiredStatusChecks }, `Unsupported requiredStatusChecks`);
-    return BranchStatus.red;
-  }
   const statuses = await getStatus(branchName);
   logger.debug({ branch: branchName, statuses }, 'branch status check result');
   if (!statuses.length) {
@@ -390,7 +390,7 @@ export async function setBranchStatus({
   const sha = await getBranchCommit(branchName);
 
   // TargetUrl can not be empty so default to bitbucket
-  const url = targetUrl || /* istanbul ignore next */ 'http://bitbucket.org';
+  const url = targetUrl || /* istanbul ignore next */ 'https://bitbucket.org';
 
   const body = {
     name: context,
@@ -460,17 +460,17 @@ async function closeIssue(issueNumber: number): Promise<void> {
   );
 }
 
-export function getPrBody(input: string): string {
+export function massageMarkdown(input: string): string {
   // Remove any HTML we use
   return smartTruncate(input, 50000)
     .replace(
       'you tick the rebase/retry checkbox',
       'rename PR to start with "rebase!"'
     )
-    .replace(/<\/?summary>/g, '**')
-    .replace(/<\/?details>/g, '')
-    .replace(new RegExp(`\n---\n\n.*?<!-- rebase-check -->.*?\n`), '')
-    .replace(/\]\(\.\.\/pull\//g, '](../../pull-requests/');
+    .replace(regEx(/<\/?summary>/g), '**')
+    .replace(regEx(/<\/?details>/g), '')
+    .replace(regEx(`\n---\n\n.*?<!-- rebase-check -->.*?\n`), '')
+    .replace(regEx(/\]\(\.\.\/pull\//g), '](../../pull-requests/');
 }
 
 export async function ensureIssue({
@@ -479,7 +479,7 @@ export async function ensureIssue({
   body,
 }: EnsureIssueConfig): Promise<EnsureIssueResult | null> {
   logger.debug(`ensureIssue()`);
-  const description = getPrBody(sanitize(body));
+  const description = massageMarkdown(sanitize(body));
 
   /* istanbul ignore if */
   if (!config.has_issues) {
@@ -534,11 +534,7 @@ export async function ensureIssue({
     }
   } catch (err) /* istanbul ignore next */ {
     if (err.message.startsWith('Repository has no issue tracker.')) {
-      logger.debug(
-        `Issues are disabled, so could not create issue: ${
-          err.message as string
-        }`
-      );
+      logger.debug(`Issues are disabled, so could not create issue: ${title}`);
     } else {
       logger.warn({ err }, 'Could not ensure issue');
     }
@@ -546,12 +542,10 @@ export async function ensureIssue({
   return null;
 }
 
-export /* istanbul ignore next */ async function getIssueList(): Promise<
-  Issue[]
-> {
+/* istanbul ignore next */
+export async function getIssueList(): Promise<Issue[]> {
   logger.debug(`getIssueList()`);
 
-  /* istanbul ignore if */
   if (!config.has_issues) {
     logger.debug('Issues are disabled - cannot getIssueList');
     return [];
@@ -568,9 +562,9 @@ export /* istanbul ignore next */ async function getIssueList(): Promise<
         await bitbucketHttp.getJson<{ values: Issue[] }>(
           `/2.0/repositories/${config.repository}/issues?q=${filter}`
         )
-      ).body.values || /* istanbul ignore next */ []
+      ).body.values || []
     );
-  } catch (err) /* istanbul ignore next */ {
+  } catch (err) {
     logger.warn({ err }, 'Error finding issues');
     return [];
   }
@@ -588,7 +582,6 @@ export async function ensureIssueClosing(title: string): Promise<void> {
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function addAssignees(
   _prNr: number,
   _assignees: string[]
@@ -619,7 +612,8 @@ export async function addReviewers(
   );
 }
 
-export /* istanbul ignore next */ function deleteLabel(): never {
+/* istanbul ignore next */
+export function deleteLabel(): never {
   throw new Error('deleteLabel not implemented');
 }
 
@@ -690,7 +684,7 @@ export async function createPr({
   };
 
   try {
-    const prInfo = (
+    const prRes = (
       await bitbucketHttp.postJson<PrResponse>(
         `/2.0/repositories/${config.repository}/pullrequests`,
         {
@@ -698,11 +692,7 @@ export async function createPr({
         }
       )
     ).body;
-    // TODO: fix types
-    const pr: Pr = {
-      number: prInfo.id,
-      displayNumber: `Pull Request #${prInfo.id}`,
-    } as any;
+    const pr = utils.prInfo(prRes);
     // istanbul ignore if
     if (config.prList) {
       config.prList.push(pr);
@@ -732,16 +722,57 @@ export async function updatePr({
     )
   ).body;
 
-  await bitbucketHttp.putJson(
-    `/2.0/repositories/${config.repository}/pullrequests/${prNo}`,
-    {
-      body: {
-        title,
-        description: sanitize(description),
-        reviewers: pr.reviewers,
-      },
+  try {
+    await bitbucketHttp.putJson(
+      `/2.0/repositories/${config.repository}/pullrequests/${prNo}`,
+      {
+        body: {
+          title,
+          description: sanitize(description),
+          reviewers: pr.reviewers,
+        },
+      }
+    );
+  } catch (err) {
+    if (
+      err.statusCode === 400 &&
+      err.body?.error?.message.includes('reviewers: Malformed reviewers list')
+    ) {
+      logger.warn(
+        { err },
+        'PR contains inactive reviewer accounts.  Will try setting only active reviewers'
+      );
+
+      // Bitbucket returns a 400 if any of the PR reviewer accounts are now inactive (ie: disabled/suspended)
+      const activeReviewers: PrReviewer[] = [];
+
+      // Validate that each previous PR reviewer account is still active
+      for (const reviewer of pr.reviewers) {
+        const reviewerUser = (
+          await bitbucketHttp.getJson<UserResponse>(
+            `/2.0/users/${reviewer.account_id}`
+          )
+        ).body;
+
+        if (reviewerUser.account_status === 'active') {
+          activeReviewers.push(reviewer);
+        }
+      }
+
+      await bitbucketHttp.putJson(
+        `/2.0/repositories/${config.repository}/pullrequests/${prNo}`,
+        {
+          body: {
+            title,
+            description: sanitize(description),
+            reviewers: activeReviewers,
+          },
+        }
+      );
+    } else {
+      throw err;
     }
-  );
+  }
 
   if (state === PrState.Closed && pr) {
     await bitbucketHttp.postJson(
@@ -750,21 +781,24 @@ export async function updatePr({
   }
 }
 
-export async function mergePr(
-  prNo: number,
-  branchName: string
-): Promise<boolean> {
-  logger.debug(`mergePr(${prNo}, ${branchName})`);
+export async function mergePr({
+  branchName,
+  id: prNo,
+  strategy: mergeStrategy,
+}: MergePRConfig): Promise<boolean> {
+  logger.debug(`mergePr(${prNo}, ${branchName}, ${mergeStrategy})`);
+
+  // Bitbucket Cloud does not support a rebase-alike; https://jira.atlassian.com/browse/BCLOUD-16610
+  if (mergeStrategy === 'rebase') {
+    logger.warn('Bitbucket Cloud does not support a "rebase" strategy.');
+    return false;
+  }
 
   try {
     await bitbucketHttp.postJson(
       `/2.0/repositories/${config.repository}/pullrequests/${prNo}/merge`,
       {
-        body: {
-          close_source_branch: true,
-          merge_strategy: 'merge_commit',
-          message: 'auto merged',
-        },
+        body: mergeBodyTransformer(mergeStrategy),
       }
     );
     logger.debug('Automerging succeeded');

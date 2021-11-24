@@ -1,19 +1,21 @@
 import { logger } from '../../logger';
-import { PackageDependency, PackageFile } from '../common';
+import { regEx } from '../../util/regex';
 import { getDep } from '../dockerfile/extract';
+import type { PackageDependency, PackageFile } from '../types';
 
 export function extractPackageFile(content: string): PackageFile | null {
   logger.trace('kubernetes.extractPackageFile()');
   let deps: PackageDependency[] = [];
 
   const isKubernetesManifest =
-    /\s*apiVersion\s*:/.test(content) && /\s*kind\s*:/.test(content);
+    regEx(/\s*apiVersion\s*:/).test(content) &&
+    regEx(/\s*kind\s*:/).test(content);
   if (!isKubernetesManifest) {
     return null;
   }
 
   for (const line of content.split('\n')) {
-    const match = /^\s*-?\s*image:\s*'?"?([^\s'"]+)'?"?\s*$/.exec(line);
+    const match = regEx(/^\s*-?\s*image:\s*'?"?([^\s'"]+)'?"?\s*$/).exec(line); // TODO #12071
     if (match) {
       const currentFrom = match[1];
       const dep = getDep(currentFrom);

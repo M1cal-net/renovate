@@ -1,20 +1,42 @@
-import fs from 'fs-extra';
-import upath from 'upath';
+import { loadFixture } from '../../../test/util';
+import { setGlobalConfig } from '../../config/global';
 import { extractPackageFile } from '.';
 
-const sample = fs.readFileSync(
-  upath.resolve(__dirname, './__fixtures__/mix.exs'),
-  'utf-8'
-);
+const sample = loadFixture('mix.exs');
 
-describe('lib/manager/mix/extract', () => {
+describe('manager/mix/extract', () => {
+  beforeEach(() => {
+    setGlobalConfig({ localDir: '' });
+  });
+
   describe('extractPackageFile()', () => {
-    it('returns empty for invalid dependency file', () => {
-      expect(extractPackageFile('nothing here')).toMatchSnapshot();
+    it('returns empty for invalid dependency file', async () => {
+      const { deps } = await extractPackageFile('nothing here', 'mix.exs');
+      expect(deps).toBeEmpty();
     });
-    it('extracts all dependencies', () => {
-      const res = extractPackageFile(sample).deps;
-      expect(res).toMatchSnapshot();
+    it('extracts all dependencies', async () => {
+      const res = await extractPackageFile(sample, 'mix.exs');
+      expect(res).toMatchSnapshot({
+        deps: [
+          { depName: 'postgrex', currentValue: '~> 0.8.1' },
+          { depName: 'ecto', currentValue: '>2.1.0 or <=3.0.0' },
+          {
+            depName: 'cowboy',
+            currentValue: 'ninenines/cowboy',
+            datasource: 'github',
+            skipReason: 'non-hex depTypes',
+          },
+          {
+            depName: 'secret',
+            currentValue: '~> 1.0',
+            datasource: 'hex',
+            lookupName: 'secret:acme',
+          },
+          { depName: 'ex_doc', currentValue: '>2.1.0 and <=3.0.0' },
+          { depName: 'jason', currentValue: '>= 1.0.0' },
+          { depName: 'jason', currentValue: '~> 1.0' },
+        ],
+      });
     });
   });
 });

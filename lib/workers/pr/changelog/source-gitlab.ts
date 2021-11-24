@@ -1,14 +1,14 @@
 import URL from 'url';
-import { Release } from '../../../datasource';
+import type { Release } from '../../../datasource/types';
 import { logger } from '../../../logger';
 import * as memCache from '../../../util/cache/memory';
 import * as packageCache from '../../../util/cache/package';
 import { regEx } from '../../../util/regex';
 import * as allVersioning from '../../../versioning';
-import { BranchUpgradeConfig } from '../../common';
-import { ChangeLogRelease, ChangeLogResult } from './common';
+import type { BranchUpgradeConfig } from '../../types';
 import { getTags } from './gitlab';
 import { addReleaseNotes } from './release-notes';
+import type { ChangeLogRelease, ChangeLogResult } from './types';
 
 const cacheNamespace = 'changelog-gitlab-release';
 
@@ -30,12 +30,13 @@ function getCachedTags(
 
 export async function getChangeLogJSON({
   versioning,
-  fromVersion,
-  toVersion,
+  currentVersion,
+  newVersion,
   sourceUrl,
   releases,
   depName,
   manager,
+  sourceDirectory,
 }: BranchUpgradeConfig): Promise<ChangeLogResult | null> {
   logger.trace('getChangeLogJSON for gitlab');
   const version = allVersioning.get(versioning);
@@ -45,8 +46,8 @@ export async function getChangeLogJSON({
   const apiBaseUrl = baseUrl.concat('api/v4/');
   const repository = pathname
     .slice(1)
-    .replace(/\/$/, '')
-    .replace(/\.git$/, '');
+    .replace(regEx(/\/$/), '')
+    .replace(regEx(/\.git$/), '');
   if (repository.split('/').length < 2) {
     logger.info({ sourceUrl }, 'Invalid gitlab URL found');
     return null;
@@ -91,8 +92,8 @@ export async function getChangeLogJSON({
   const changelogReleases: ChangeLogRelease[] = [];
   // compare versions
   const include = (v: string): boolean =>
-    version.isGreaterThan(v, fromVersion) &&
-    !version.isGreaterThan(v, toVersion);
+    version.isGreaterThan(v, currentVersion) &&
+    !version.isGreaterThan(v, newVersion);
   for (let i = 1; i < validReleases.length; i += 1) {
     const prev = validReleases[i - 1];
     const next = validReleases[i];
@@ -130,9 +131,11 @@ export async function getChangeLogJSON({
     project: {
       apiBaseUrl,
       baseUrl,
-      gitlab: repository,
-      repository: sourceUrl,
+      type: 'gitlab',
+      repository,
+      sourceUrl,
       depName,
+      sourceDirectory,
     },
     versions: changelogReleases,
   };

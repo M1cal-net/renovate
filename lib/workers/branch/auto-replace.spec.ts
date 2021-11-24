@@ -1,14 +1,10 @@
-import { readFileSync } from 'fs';
-import { resolve } from 'upath';
-import { defaultConfig } from '../../../test/util';
+import { defaultConfig, loadFixture } from '../../../test/util';
+import { WORKER_FILE_UPDATE_FAILED } from '../../constants/error-messages';
 import { extractPackageFile } from '../../manager/html';
-import { BranchUpgradeConfig } from '../common';
+import type { BranchUpgradeConfig } from '../types';
 import { doAutoReplace } from './auto-replace';
 
-const sampleHtml = readFileSync(
-  resolve(__dirname, `../../manager/html/__fixtures__/sample.html`),
-  'utf8'
-);
+const sampleHtml = loadFixture('sample.html', `../../manager/html`);
 
 jest.mock('../../util/fs');
 
@@ -52,6 +48,7 @@ describe('workers/branch/auto-replace', () => {
       upgrade.newDigest = 'some-digest';
       upgrade.depIndex = 0;
       const res = await doAutoReplace(upgrade, src, reuseExistingBranch);
+      // FIXME: explicit assert condition
       expect(res).toMatchSnapshot();
     });
     it('handles a double attempt', async () => {
@@ -65,6 +62,7 @@ describe('workers/branch/auto-replace', () => {
       upgrade.newValue = '7.1.1';
       upgrade.depIndex = 1;
       const res = await doAutoReplace(upgrade, src, reuseExistingBranch);
+      // FIXME: explicit assert condition
       expect(res).toMatchSnapshot();
     });
     it('handles already updated', async () => {
@@ -85,6 +83,7 @@ describe('workers/branch/auto-replace', () => {
         srcAlreadyUpdated,
         reuseExistingBranch
       );
+      // FIXME: explicit assert condition
       expect(res).toMatchSnapshot();
     });
     it('returns existing content if replaceString mismatch', async () => {
@@ -103,7 +102,8 @@ describe('workers/branch/auto-replace', () => {
         'wrong source',
         reuseExistingBranch
       );
-      expect(res).toEqual('wrong source');
+      // FIXME: explicit assert condition
+      expect(res).toBe('wrong source');
     });
     it('updates version and integrity', async () => {
       const script =
@@ -120,6 +120,7 @@ describe('workers/branch/auto-replace', () => {
       upgrade.depIndex = 0;
       upgrade.replaceString = script;
       const res = await doAutoReplace(upgrade, src, reuseExistingBranch);
+      // FIXME: explicit assert condition
       expect(res).toMatchSnapshot();
     });
     it('updates with autoReplaceNewString', async () => {
@@ -139,7 +140,26 @@ describe('workers/branch/auto-replace', () => {
       upgrade.autoReplaceStringTemplate =
         '{{depName}}{{#if newValue}}:{{newValue}}{{/if}}{{#if newDigest}}@{{newDigest}}{{/if}}';
       const res = await doAutoReplace(upgrade, dockerfile, reuseExistingBranch);
+      // FIXME: explicit assert condition
       expect(res).toMatchSnapshot();
+    });
+    it('fails with oldversion in depname', async () => {
+      const yml =
+        'image: "1111111111.dkr.ecr.us-east-1.amazonaws.com/my-repository:1"\n\n';
+      upgrade.manager = 'regex';
+      upgrade.depName =
+        '1111111111.dkr.ecr.us-east-1.amazonaws.com/my-repository';
+      upgrade.currentValue = '1';
+      upgrade.newValue = '42';
+      upgrade.depIndex = 0;
+      upgrade.replaceString =
+        'image: "1111111111.dkr.ecr.us-east-1.amazonaws.com/my-repository:1"\n\n';
+      upgrade.packageFile = 'k8s/base/defaults.yaml';
+      upgrade.matchStrings = [
+        'image:\\s*\\\'?\\"?(?<depName>[^:]+):(?<currentValue>[^\\s\\\'\\"]+)\\\'?\\"?\\s*',
+      ];
+      const res = doAutoReplace(upgrade, yml, reuseExistingBranch);
+      await expect(res).rejects.toThrow(WORKER_FILE_UPDATE_FAILED);
     });
   });
 });

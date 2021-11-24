@@ -1,15 +1,10 @@
 import { Stream } from 'stream';
 import bunyan from 'bunyan';
 import fs from 'fs-extra';
-import { RequestError } from 'got';
 import { clone } from '../util/clone';
+import { HttpError } from '../util/http/types';
 import { redactedFields, sanitize } from '../util/sanitize';
-
-export interface BunyanRecord extends Record<string, any> {
-  level: number;
-  msg: string;
-  module?: string;
-}
+import type { BunyanRecord, BunyanStream } from './types';
 
 const excludeProps = ['pid', 'time', 'v', 'hostname'];
 
@@ -67,10 +62,11 @@ export default function prepareError(err: Error): Record<string, unknown> {
   }
 
   // handle got error
-  if (err instanceof RequestError) {
+  if (err instanceof HttpError) {
     const options: Record<string, unknown> = {
       headers: clone(err.options.headers),
       url: err.options.url?.toString(),
+      hostType: err.options.context.hostType,
     };
     response.options = options;
 
@@ -93,7 +89,8 @@ export default function prepareError(err: Error): Record<string, unknown> {
   return response;
 }
 
-export function sanitizeValue(value: unknown, seen = new WeakMap()): any {
+export function sanitizeValue(_value: unknown, seen = new WeakMap()): any {
+  let value = _value;
   if (Array.isArray(value)) {
     const length = value.length;
     const arrayResult = Array(length);
@@ -112,13 +109,12 @@ export function sanitizeValue(value: unknown, seen = new WeakMap()): any {
   }
 
   if (value instanceof Error) {
-    // eslint-disable-next-line no-param-reassign
     value = prepareError(value);
   }
 
   const valueType = typeof value;
 
-  if (value != null && valueType !== 'function' && valueType === 'object') {
+  if (value && valueType !== 'function' && valueType === 'object') {
     if (value instanceof Date) {
       return value;
     }
@@ -135,6 +131,11 @@ export function sanitizeValue(value: unknown, seen = new WeakMap()): any {
         curValue = '[content]';
       } else if (templateFields.includes(key)) {
         curValue = '[Template]';
+      } else if (key === 'secrets') {
+        curValue = {};
+        Object.keys(val).forEach((secretKey) => {
+          curValue[secretKey] = '***********';
+        });
       } else {
         curValue = seen.has(val) ? seen.get(val) : sanitizeValue(val, seen);
       }
@@ -146,11 +147,6 @@ export function sanitizeValue(value: unknown, seen = new WeakMap()): any {
 
   return valueType === 'string' ? sanitize(value as string) : value;
 }
-
-type BunyanStream = (NodeJS.WritableStream | Stream) & {
-  writable?: boolean;
-  write: (chunk: BunyanRecord, enc, cb) => void;
-};
 
 export function withSanitizer(streamConfig: bunyan.Stream): bunyan.Stream {
   if (streamConfig.type === 'rotating-file') {
@@ -164,7 +160,7 @@ export function withSanitizer(streamConfig: bunyan.Stream): bunyan.Stream {
       const result =
         streamConfig.type === 'raw'
           ? raw
-          : JSON.stringify(raw, bunyan.safeCycles()).replace(/\n?$/, '\n');
+          : JSON.stringify(raw, bunyan.safeCycles()).replace(/\n?$/, '\n'); // TODO #12070
       stream.write(result, enc, cb);
     };
 

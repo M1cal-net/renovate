@@ -1,15 +1,19 @@
-import { mocked } from '../../test/util';
+import * as httpMock from '../../test/http-mock';
+import { logger, mocked } from '../../test/util';
 import {
   EXTERNAL_HOST_ERROR,
   HOST_DISABLED,
 } from '../constants/error-messages';
 import { ExternalHostError } from '../types/errors/external-host-error';
 import { loadModules } from '../util/modules';
+import { Datasource } from './datasource';
 import * as datasourceDocker from './docker';
+import { GalaxyDatasource } from './galaxy';
 import * as datasourceGithubTags from './github-tags';
 import * as datasourceMaven from './maven';
 import * as datasourceNpm from './npm';
 import * as datasourcePackagist from './packagist';
+import type { DatasourceApi } from './types';
 import * as datasource from '.';
 
 jest.mock('./docker');
@@ -30,33 +34,40 @@ describe('datasource/index', () => {
     expect(datasource.getDatasources()).toBeDefined();
     expect(datasource.getDatasourceList()).toBeDefined();
   });
-  it('validates dataource', () => {
-    function validateDatasource(
-      module: datasource.Datasource,
-      name: string
-    ): boolean {
+  it('validates datasource', () => {
+    function validateDatasource(module: DatasourceApi, name: string): boolean {
       if (!module.getReleases) {
         return false;
       }
-      if (module.id !== name) {
-        return false;
-      }
-      return true;
+      return module.id === name;
     }
-    const dss = datasource.getDatasources();
+    function filterClassBasedDatasources(name: string): boolean {
+      return !(datasource.getDatasources().get(name) instanceof Datasource);
+    }
+    const dss = new Map(datasource.getDatasources());
 
-    const loadedDs = loadModules(__dirname, validateDatasource);
+    for (const ds of dss.values()) {
+      if (ds instanceof Datasource) {
+        dss.delete(ds.id);
+      }
+    }
+
+    const loadedDs = loadModules(
+      __dirname,
+      validateDatasource,
+      filterClassBasedDatasources
+    );
     expect(Array.from(dss.keys())).toEqual(Object.keys(loadedDs));
 
     for (const dsName of dss.keys()) {
       const ds = dss.get(dsName);
-      expect(validateDatasource(ds, dsName)).toBe(true);
+      expect(validateDatasource(ds, dsName)).toBeTrue();
     }
   });
   it('returns if digests are supported', () => {
     expect(
       datasource.supportsDigests({ datasource: datasourceGithubTags.id })
-    ).toBe(true);
+    ).toBeTrue();
   });
   it('returns null for no datasource', async () => {
     expect(
@@ -82,6 +93,14 @@ describe('datasource/index', () => {
       })
     ).toBeNull();
   });
+  it('returns class datasource', async () => {
+    expect(
+      await datasource.getPkgReleases({
+        datasource: 'cdnjs',
+        depName: null,
+      })
+    ).toBeNull();
+  });
   it('returns getDigest', async () => {
     expect(
       await datasource.getDigest({
@@ -98,9 +117,10 @@ describe('datasource/index', () => {
       datasource: datasourceNpm.id,
       depName: 'react-native',
     });
-    expect(res).toMatchSnapshot();
-    expect(res.changelogUrl).toBeDefined();
-    expect(res.sourceUrl).toBeDefined();
+    expect(res).toMatchSnapshot({
+      changelogUrl:
+        'https://github.com/react-native-community/react-native-releases/blob/master/CHANGELOG.md',
+    });
   });
   it('applies extractVersion', async () => {
     npmDatasource.getReleases.mockResolvedValue({
@@ -117,7 +137,7 @@ describe('datasource/index', () => {
       versioning: 'loose',
     });
     expect(res.releases).toHaveLength(1);
-    expect(res.releases[0].version).toEqual('v1.0');
+    expect(res.releases[0].version).toBe('v1.0');
   });
   it('adds sourceUrl', async () => {
     npmDatasource.getReleases.mockResolvedValue({
@@ -127,8 +147,22 @@ describe('datasource/index', () => {
       datasource: datasourceNpm.id,
       depName: 'node',
     });
-    expect(res).toMatchSnapshot();
-    expect(res.sourceUrl).toBeDefined();
+    expect(res).toMatchSnapshot({
+      sourceUrl: 'https://github.com/nodejs/node',
+    });
+  });
+  it('ignores and warns for registryUrls', async () => {
+    httpMock
+      .scope('https://galaxy.ansible.com')
+      .get('/api/v1/roles/')
+      .query({ owner__username: 'some', name: 'dep' })
+      .reply(200, {});
+    await datasource.getPkgReleases({
+      datasource: GalaxyDatasource.id,
+      depName: 'some.dep',
+      registryUrls: ['https://google.com/'],
+    });
+    expect(logger.logger.warn).toHaveBeenCalled();
   });
   it('warns if multiple registryUrls for registryStrategy=first', async () => {
     dockerDatasource.getReleases.mockResolvedValue(null);
@@ -137,7 +171,7 @@ describe('datasource/index', () => {
       depName: 'something',
       registryUrls: ['https://docker.com', 'https://docker.io'],
     });
-    expect(res).toMatchSnapshot();
+    expect(res).toBeNull();
   });
   it('hunts registries and returns success', async () => {
     packagistDatasource.getReleases.mockResolvedValueOnce(null);
@@ -202,8 +236,18 @@ describe('datasource/index', () => {
       depName: 'something',
       registryUrls: ['https://reg1.com', 'https://reg2.io'],
     });
-    expect(res).toMatchSnapshot();
-    expect(res.releases).toHaveLength(2);
+    expect(res).toEqual({
+      releases: [
+        {
+          registryUrl: 'https://reg1.com',
+          version: '1.0.0',
+        },
+        {
+          registryUrl: 'https://reg1.com',
+          version: '1.1.0',
+        },
+      ],
+    });
   });
   it('merges registries and aborts on ExternalHostError', async () => {
     mavenDatasource.getReleases.mockImplementationOnce(() => {
@@ -241,7 +285,7 @@ describe('datasource/index', () => {
       datasource: datasourceNpm.id,
       depName: 'abc',
     });
-    expect(res.sourceUrl).toEqual('https://abc.com');
+    expect(res.sourceUrl).toBe('https://abc.com');
   });
   it('massages sourceUrl', async () => {
     npmDatasource.getReleases.mockResolvedValue({
@@ -252,6 +296,6 @@ describe('datasource/index', () => {
       datasource: datasourceNpm.id,
       depName: 'cas',
     });
-    expect(res.sourceUrl).toEqual('https://github.com/Jasig/cas');
+    expect(res.sourceUrl).toBe('https://github.com/Jasig/cas');
   });
 });

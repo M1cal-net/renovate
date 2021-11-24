@@ -1,9 +1,9 @@
 {
   "extends": "./tsconfig",
   "compilerOptions": {
+    "declaration": true,
     "resolveJsonModule": false,
     "noImplicitAny": false,
-    "isolatedModules": true,
     "sourceMap": true,
     "inlineSources": true,
     "allowJs": false,
@@ -16,7 +16,9 @@
     "**/__mocks__/**",
     "**/__fixtures__/**",
     "**/__testutil__/**",
+    "**/test/**",
     "**/*.spec.ts",
+    "jest.config.ts",
     "./test",
     "./tools"
   ]

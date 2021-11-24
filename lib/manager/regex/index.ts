@@ -1,13 +1,14 @@
-import url from 'url';
+import { URL } from 'url';
 import { logger } from '../../logger';
 import { regEx } from '../../util/regex';
 import * as template from '../../util/template';
-import {
+import type {
   CustomExtractConfig,
   PackageDependency,
   PackageFile,
   Result,
-} from '../common';
+} from '../types';
+import type { ExtractionTemplate } from './types';
 
 export const defaultConfig = {
   pinDigests: false,
@@ -22,6 +23,7 @@ const validMatchFields = [
   'versioning',
   'extractVersion',
   'registryUrl',
+  'depType',
 ];
 
 function regexMatchAll(regex: RegExp, content: string): RegExpMatchArray[] {
@@ -37,17 +39,36 @@ function regexMatchAll(regex: RegExp, content: string): RegExpMatchArray[] {
 }
 
 function createDependency(
-  matchResult: RegExpMatchArray,
+  extractionTemplate: ExtractionTemplate,
   config: CustomExtractConfig,
   dep?: PackageDependency
 ): PackageDependency {
   const dependency = dep || {};
-  const { groups } = matchResult;
+  const { groups, replaceString } = extractionTemplate;
+
+  function updateDependency(field: string, value: string): void {
+    switch (field) {
+      case 'registryUrl':
+        // check if URL is valid and pack inside an array
+        try {
+          const url = new URL(value).toString();
+          dependency.registryUrls = [url];
+        } catch (err) {
+          logger.warn({ value }, 'Invalid regex manager registryUrl');
+        }
+        break;
+      default:
+        dependency[field] = value;
+        break;
+    }
+  }
+
   for (const field of validMatchFields) {
     const fieldTemplate = `${field}Template`;
     if (config[fieldTemplate]) {
       try {
-        dependency[field] = template.compile(config[fieldTemplate], groups);
+        const compiled = template.compile(config[fieldTemplate], groups, false);
+        updateDependency(field, compiled);
       } catch (err) {
         logger.warn(
           { template: config[fieldTemplate] },
@@ -56,37 +77,11 @@ function createDependency(
         return null;
       }
     } else if (groups[field]) {
-      switch (field) {
-        case 'registryUrl':
-          // check if URL is valid and pack inside an array
-          if (url.parse(groups[field])) {
-            dependency.registryUrls = [groups[field]];
-          }
-          break;
-        default:
-          dependency[field] = groups[field];
-          break;
-      }
+      updateDependency(field, groups[field]);
     }
   }
-  dependency.replaceString = String(matchResult[0]);
+  dependency.replaceString = replaceString;
   return dependency;
-}
-
-function mergeDependency(deps: PackageDependency[]): PackageDependency {
-  const result: PackageDependency = {};
-  deps.forEach((dep) => {
-    validMatchFields.forEach((field) => {
-      if (dep[field]) {
-        result[field] = dep[field];
-        // save the line replaceString of the section which contains the current Value for a speed up lookup during the replace phase
-        if (field === 'currentValue') {
-          result.replaceString = dep.replaceString;
-        }
-      }
-    });
-  });
-  return result;
 }
 
 function handleAny(
@@ -97,7 +92,29 @@ function handleAny(
   return config.matchStrings
     .map((matchString) => regEx(matchString, 'g'))
     .flatMap((regex) => regexMatchAll(regex, content)) // match all regex to content, get all matches, reduce to single array
-    .map((matchResult) => createDependency(matchResult, config));
+    .map((matchResult) =>
+      createDependency(
+        { groups: matchResult.groups, replaceString: matchResult[0] },
+        config
+      )
+    );
+}
+
+function mergeGroups(
+  mergedGroup: Record<string, string>,
+  secondGroup: Record<string, string>
+): Record<string, string> {
+  return { ...mergedGroup, ...secondGroup };
+}
+
+export function mergeExtractionTemplate(
+  base: ExtractionTemplate,
+  addition: ExtractionTemplate
+): ExtractionTemplate {
+  return {
+    groups: mergeGroups(base.groups, addition.groups),
+    replaceString: addition.replaceString ?? base.replaceString,
+  };
 }
 
 function handleCombination(
@@ -105,32 +122,56 @@ function handleCombination(
   packageFile: string,
   config: CustomExtractConfig
 ): PackageDependency[] {
-  const dep = handleAny(content, packageFile, config).reduce(
-    (mergedDep, currentDep) => mergeDependency([mergedDep, currentDep]),
-    {}
-  ); // merge fields of dependencies
-  return [dep];
+  const matches = config.matchStrings
+    .map((matchString) => regEx(matchString, 'g'))
+    .flatMap((regex) => regexMatchAll(regex, content)); // match all regex to content, get all matches, reduce to single array
+
+  if (!matches.length) {
+    return [];
+  }
+
+  const extraction = matches
+    .map((match) => ({
+      groups: match.groups,
+      replaceString: match?.groups?.currentValue ? match[0] : undefined,
+    }))
+    .reduce((base, addition) => mergeExtractionTemplate(base, addition));
+  return [createDependency(extraction, config)];
 }
 
 function handleRecursive(
   content: string,
   packageFile: string,
   config: CustomExtractConfig,
-  index = 0
+  index = 0,
+  combinedGroups: Record<string, string> = {}
 ): PackageDependency[] {
   const regexes = config.matchStrings.map((matchString) =>
     regEx(matchString, 'g')
   );
   // abort if we have no matchString anymore
-  if (regexes[index] == null) {
+  if (!regexes[index]) {
     return [];
   }
   return regexMatchAll(regexes[index], content).flatMap((match) => {
-    // if we have a depName and a currentValue with have the minimal viable definition
+    // if we have a depName and a currentValue which have the minimal viable definition
     if (match?.groups?.depName && match?.groups?.currentValue) {
-      return createDependency(match, config);
+      return createDependency(
+        {
+          groups: mergeGroups(combinedGroups, match.groups),
+          replaceString: match[0],
+        },
+        config
+      );
     }
-    return handleRecursive(match[0], packageFile, config, index + 1);
+
+    return handleRecursive(
+      match[0],
+      packageFile,
+      config,
+      index + 1,
+      mergeGroups(combinedGroups, match.groups || {})
+    );
   });
 }
 
@@ -139,7 +180,7 @@ export function extractPackageFile(
   packageFile: string,
   config: CustomExtractConfig
 ): Result<PackageFile | null> {
-  let deps;
+  let deps: PackageDependency[];
   switch (config.matchStringsStrategy) {
     default:
     case 'any':
@@ -156,17 +197,20 @@ export function extractPackageFile(
   // filter all null values
   deps = deps.filter(Boolean);
   if (deps.length) {
+    const res: PackageFile = { deps, matchStrings: config.matchStrings };
     if (config.matchStringsStrategy) {
-      return {
-        deps,
-        matchStrings: config.matchStrings,
-        matchStringsStrategy: config.matchStringsStrategy,
-      };
+      res.matchStringsStrategy = config.matchStringsStrategy;
     }
-    return {
-      deps,
-      matchStrings: config.matchStrings,
-    };
+    // copy over templates for autoreplace
+    for (const field of validMatchFields.map((f) => `${f}Template`)) {
+      if (config[field]) {
+        res[field] = config[field];
+      }
+    }
+    if (config.autoReplaceStringTemplate) {
+      res.autoReplaceStringTemplate = config.autoReplaceStringTemplate;
+    }
+    return res;
   }
 
   return null;

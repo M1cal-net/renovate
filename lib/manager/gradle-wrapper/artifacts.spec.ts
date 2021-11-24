@@ -1,35 +1,37 @@
-/* eslint jest/no-standalone-expect: 0 */
-import { exec as _exec } from 'child_process';
-import { readFile } from 'fs-extra';
+import { readFile, stat } from 'fs-extra';
 import { resolve } from 'upath';
-import { envMock, mockExecAll } from '../../../test/exec-util';
+import { envMock, exec, mockExecAll } from '../../../test/exec-util';
 import * as httpMock from '../../../test/http-mock';
 import {
   addReplacingSerializer,
   env,
   fs,
-  getName,
   git,
   partial,
 } from '../../../test/util';
-import { setUtilConfig } from '../../util';
-import { BinarySource } from '../../util/exec/common';
+import { setGlobalConfig } from '../../config/global';
+import type { RepoGlobalConfig } from '../../config/types';
 import { resetPrefetchedImages } from '../../util/exec/docker';
-import { StatusResult } from '../../util/git';
-import * as dcUpdate from '.';
+import type { StatusResult } from '../../util/git';
+import type { UpdateArtifactsConfig } from '../types';
+import * as gradleWrapper from '.';
 
 jest.mock('child_process');
 jest.mock('../../util/fs');
 jest.mock('../../util/git');
 jest.mock('../../util/exec/env');
 
-const exec: jest.Mock<typeof _exec> = _exec as any;
 const fixtures = resolve(__dirname, './__fixtures__');
-const config = {
+
+const adminConfig: RepoGlobalConfig = {
   localDir: resolve(fixtures, './testFiles'),
-  toVersion: '5.6.4',
 };
-const dockerConfig = { ...config, binarySource: BinarySource.Docker };
+
+const dockerAdminConfig = { ...adminConfig, binarySource: 'docker' };
+
+const config: UpdateArtifactsConfig = {
+  newValue: '5.6.4',
+};
 
 addReplacingSerializer('gradlew.bat', '<gradlew>');
 addReplacingSerializer('./gradlew', '<gradlew>');
@@ -38,10 +40,9 @@ function readString(...paths: string[]): Promise<string> {
   return readFile(resolve(fixtures, ...paths), 'utf8');
 }
 
-describe(getName(__filename), () => {
-  beforeEach(async () => {
+describe('manager/gradle-wrapper/artifacts', () => {
+  beforeEach(() => {
     jest.resetAllMocks();
-    httpMock.setup();
 
     env.getChildProcessEnv.mockReturnValue({
       ...envMock.basic,
@@ -49,14 +50,15 @@ describe(getName(__filename), () => {
       LC_ALL: 'en_US',
     });
 
-    await setUtilConfig(config);
+    setGlobalConfig(adminConfig);
     resetPrefetchedImages();
 
     fs.readLocalFile.mockResolvedValue('test');
+    fs.stat.mockImplementation((p) => stat(p));
   });
 
   afterEach(() => {
-    httpMock.reset();
+    setGlobalConfig();
   });
 
   it('replaces existing value', async () => {
@@ -70,13 +72,13 @@ describe(getName(__filename), () => {
 
     const execSnapshots = mockExecAll(exec);
 
-    const res = await dcUpdate.updateArtifacts({
+    const res = await gradleWrapper.updateArtifacts({
       packageFileName: 'gradle/wrapper/gradle-wrapper.properties',
       updatedDeps: [],
       newPackageFileContent: await readString(
         `./expectedFiles/gradle/wrapper/gradle-wrapper.properties`
       ),
-      config: { ...config, toVersion: '6.3' },
+      config: { ...config, newValue: '6.3' },
     });
 
     expect(res).toEqual(
@@ -95,13 +97,12 @@ describe(getName(__filename), () => {
   });
 
   it('gradlew not found', async () => {
-    const res = await dcUpdate.updateArtifacts({
+    setGlobalConfig({ ...adminConfig, localDir: 'some-dir' });
+    const res = await gradleWrapper.updateArtifacts({
       packageFileName: 'gradle-wrapper.properties',
       updatedDeps: [],
       newPackageFileContent: undefined,
-      config: {
-        localDir: 'some-dir',
-      },
+      config: {},
     });
 
     expect(res).toBeNull();
@@ -114,7 +115,7 @@ describe(getName(__filename), () => {
         modified: [],
       })
     );
-    const res = await dcUpdate.updateArtifacts({
+    const res = await gradleWrapper.updateArtifacts({
       packageFileName: 'gradle-wrapper.properties',
       updatedDeps: [],
       newPackageFileContent: '',
@@ -122,7 +123,7 @@ describe(getName(__filename), () => {
     });
 
     expect(execSnapshots).toMatchSnapshot();
-    expect(res).toEqual([]);
+    expect(res).toBeEmptyArray();
   });
 
   it('updates distributionSha256Sum', async () => {
@@ -142,11 +143,14 @@ describe(getName(__filename), () => {
 
     const execSnapshots = mockExecAll(exec);
 
-    const result = await dcUpdate.updateArtifacts({
+    const result = await gradleWrapper.updateArtifacts({
       packageFileName: 'gradle-wrapper.properties',
       updatedDeps: [],
       newPackageFileContent: `distributionSha256Sum=336b6898b491f6334502d8074a6b8c2d73ed83b92123106bd4bf837f04111043\ndistributionUrl=https\\://services.gradle.org/distributions/gradle-6.3-bin.zip`,
-      config: dockerConfig,
+      config: {
+        ...config,
+        ...dockerAdminConfig,
+      },
     });
 
     expect(result).toHaveLength(1);
@@ -156,13 +160,13 @@ describe(getName(__filename), () => {
     expect(httpMock.getTrace()).toEqual([
       {
         headers: {
-          'accept-encoding': 'gzip, deflate',
+          'accept-encoding': 'gzip, deflate, br',
           host: 'services.gradle.org',
-          'user-agent': 'https://github.com/renovatebot/renovate',
+          'user-agent':
+            'RenovateBot/0.0.0-semantic-release (https://github.com/renovatebot/renovate)',
         },
         method: 'GET',
-        url:
-          'https://services.gradle.org/distributions/gradle-6.3-bin.zip.sha256',
+        url: 'https://services.gradle.org/distributions/gradle-6.3-bin.zip.sha256',
       },
     ]);
   });
@@ -173,7 +177,7 @@ describe(getName(__filename), () => {
       .get('/distributions/gradle-6.3-bin.zip.sha256')
       .reply(404);
 
-    const result = await dcUpdate.updateArtifacts({
+    const result = await gradleWrapper.updateArtifacts({
       packageFileName: 'gradle-wrapper.properties',
       updatedDeps: [],
       newPackageFileContent: `distributionSha256Sum=336b6898b491f6334502d8074a6b8c2d73ed83b92123106bd4bf837f04111043\ndistributionUrl=https\\://services.gradle.org/distributions/gradle-6.3-bin.zip`,
@@ -191,13 +195,13 @@ describe(getName(__filename), () => {
     expect(httpMock.getTrace()).toEqual([
       {
         headers: {
-          'accept-encoding': 'gzip, deflate',
+          'accept-encoding': 'gzip, deflate, br',
           host: 'services.gradle.org',
-          'user-agent': 'https://github.com/renovatebot/renovate',
+          'user-agent':
+            'RenovateBot/0.0.0-semantic-release (https://github.com/renovatebot/renovate)',
         },
         method: 'GET',
-        url:
-          'https://services.gradle.org/distributions/gradle-6.3-bin.zip.sha256',
+        url: 'https://services.gradle.org/distributions/gradle-6.3-bin.zip.sha256',
       },
     ]);
   });

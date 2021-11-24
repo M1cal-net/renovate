@@ -1,34 +1,46 @@
-import yaml from 'js-yaml';
+import { dump } from 'js-yaml';
 import * as helmv3Updater from './update';
 
-describe('lib/manager/helmv3/update', () => {
+describe('manager/helmv3/update', () => {
   describe('.bumpPackageVersion()', () => {
-    const content = yaml.safeDump({
+    const content = dump({
       apiVersion: 'v2',
       name: 'test',
       version: '0.0.2',
     });
     it('increments', () => {
-      const res = helmv3Updater.bumpPackageVersion(content, '0.0.2', 'patch');
-      expect(res).toMatchSnapshot();
-      expect(res).not.toEqual(content);
+      const { bumpedContent } = helmv3Updater.bumpPackageVersion(
+        content,
+        '0.0.2',
+        'patch'
+      );
+      const expected = content.replace('0.0.2', '0.0.3');
+      expect(bumpedContent).toEqual(expected);
     });
     it('no ops', () => {
-      const res = helmv3Updater.bumpPackageVersion(content, '0.0.1', 'patch');
-      expect(res).toEqual(content);
+      const { bumpedContent } = helmv3Updater.bumpPackageVersion(
+        content,
+        '0.0.1',
+        'patch'
+      );
+      expect(bumpedContent).toEqual(content);
     });
     it('updates', () => {
-      const res = helmv3Updater.bumpPackageVersion(content, '0.0.1', 'minor');
-      expect(res).toMatchSnapshot();
-      expect(res).not.toEqual(content);
+      const { bumpedContent } = helmv3Updater.bumpPackageVersion(
+        content,
+        '0.0.1',
+        'minor'
+      );
+      const expected = content.replace('0.0.2', '0.1.0');
+      expect(bumpedContent).toEqual(expected);
     });
     it('returns content if bumping errors', () => {
-      const res = helmv3Updater.bumpPackageVersion(
+      const { bumpedContent } = helmv3Updater.bumpPackageVersion(
         content,
         '0.0.2',
         true as any
       );
-      expect(res).toEqual(content);
+      expect(bumpedContent).toEqual(content);
     });
   });
 });

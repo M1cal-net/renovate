@@ -1,12 +1,12 @@
 import is from '@sindresorhus/is';
-import { RenovateConfig } from '../../../config/common';
+import type { RenovateConfig } from '../../../config/types';
 import { logger } from '../../../logger';
 import {
   extractAllPackageFiles,
   extractPackageFile,
   get,
 } from '../../../manager';
-import { PackageFile } from '../../../manager/common';
+import type { PackageFile } from '../../../manager/types';
 import { readLocalFile } from '../../../util/fs';
 
 export async function getManagerPackageFiles(
@@ -47,6 +47,7 @@ export async function getManagerPackageFiles(
   const packageFiles: PackageFile[] = [];
   for (const packageFile of fileList) {
     const content = await readLocalFile(packageFile, 'utf8');
+    // istanbul ignore else
     if (content) {
       const res = await extractPackageFile(
         manager,
@@ -60,12 +61,10 @@ export async function getManagerPackageFiles(
         }
         packageFiles.push({
           packageFile,
-          manager,
           ...res,
         });
       }
     } else {
-      // istanbul ignore next
       logger.debug({ packageFile }, 'packageFile has no content');
     }
   }

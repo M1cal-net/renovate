@@ -1,6 +1,4 @@
-import nock from 'nock';
 import * as httpMock from '../../../test/http-mock';
-import { getName } from '../../../test/util';
 import {
   EXTERNAL_HOST_ERROR,
   PLATFORM_BAD_CREDENTIALS,
@@ -8,28 +6,53 @@ import {
   PLATFORM_RATE_LIMIT_EXCEEDED,
   REPOSITORY_CHANGED,
 } from '../../constants/error-messages';
+import { id as GITHUB_RELEASES_ID } from '../../datasource/github-releases';
 import * as hostRules from '../host-rules';
 import { GithubHttp, setBaseUrl } from './github';
 
 const githubApiHost = 'https://api.github.com';
 
-describe(getName(__filename), () => {
+const graphqlQuery = `
+query(
+  $owner: String!,
+  $name: String!,
+  $count: Int,
+  $cursor: String
+) {
+  repository(owner: $name, name: $name) {
+    testItem (
+      orderBy: { field: UPDATED_AT, direction: DESC },
+      filterBy: { createdBy: "someone" },
+      first: $count,
+      after: $cursor,
+    ) {
+      pageInfo {
+        endCursor
+        hasNextPage
+      }
+      nodes {
+        number state title body
+      }
+    }
+  }
+}
+`;
+
+describe('util/http/github', () => {
   let githubApi: GithubHttp;
   beforeEach(() => {
     githubApi = new GithubHttp();
     setBaseUrl(githubApiHost);
     jest.resetAllMocks();
-    httpMock.setup();
   });
 
   afterEach(() => {
-    httpMock.reset();
     hostRules.clear();
   });
 
   describe('HTTP', () => {
     it('supports app mode', async () => {
-      hostRules.add({ hostType: 'github', token: 'x-access-token:abc123' });
+      hostRules.add({ hostType: 'github', token: 'x-access-token:123test' });
       httpMock.scope(githubApiHost).get('/some-url').reply(200);
       await githubApi.get('/some-url', {
         headers: { accept: 'some-accept' },
@@ -39,7 +62,23 @@ describe(getName(__filename), () => {
       expect(req.headers.accept).toBe(
         'some-accept, application/vnd.github.machine-man-preview+json'
       );
+      expect(req.headers.authorization).toBe('token 123test');
     });
+
+    it('supports different datasources', async () => {
+      const githubApiDatasource = new GithubHttp(GITHUB_RELEASES_ID);
+      hostRules.add({ hostType: 'github', token: 'abc' });
+      hostRules.add({
+        hostType: GITHUB_RELEASES_ID,
+        token: 'def',
+      });
+      httpMock.scope(githubApiHost).get('/some-url').reply(200);
+      await githubApiDatasource.get('/some-url');
+      const [req] = httpMock.getTrace();
+      expect(req).toBeDefined();
+      expect(req.headers.authorization).toBe('token def');
+    });
+
     it('paginates', async () => {
       const url = '/some-url';
       httpMock
@@ -56,6 +95,36 @@ describe(getName(__filename), () => {
         .reply(200, ['d']);
       const res = await githubApi.getJson('some-url', { paginate: true });
       expect(res.body).toEqual(['a', 'b', 'c', 'd']);
+      const trace = httpMock.getTrace();
+      expect(trace).toHaveLength(3);
+    });
+    it('uses paginationField', async () => {
+      const url = '/some-url';
+      httpMock
+        .scope(githubApiHost)
+        .get(url)
+        .reply(
+          200,
+          { the_field: ['a'], total: 4 },
+          {
+            link: `<${url}?page=2>; rel="next", <${url}?page=3>; rel="last"`,
+          }
+        )
+        .get(`${url}?page=2`)
+        .reply(
+          200,
+          { the_field: ['b', 'c'], total: 4 },
+          {
+            link: `<${url}?page=3>; rel="next", <${url}?page=3>; rel="last"`,
+          }
+        )
+        .get(`${url}?page=3`)
+        .reply(200, { the_field: ['d'], total: 4 });
+      const res: any = await githubApi.getJson('some-url', {
+        paginate: true,
+        paginationField: 'the_field',
+      });
+      expect(res.body.the_field).toEqual(['a', 'b', 'c', 'd']);
       const trace = httpMock.getTrace();
       expect(trace).toHaveLength(3);
     });
@@ -77,7 +146,7 @@ describe(getName(__filename), () => {
       async function fail(
         code: number,
         body: any = undefined,
-        headers: nock.ReplyHeaders = undefined
+        headers: httpMock.ReplyHeaders = undefined
       ) {
         const url = '/some-url';
         httpMock
@@ -96,6 +165,7 @@ describe(getName(__filename), () => {
           );
         await githubApi.getJson(url);
       }
+
       async function failWithError(error: string | Record<string, unknown>) {
         const url = '/some-url';
         httpMock.scope(githubApiHost).get(url).replyWithError(error);
@@ -105,6 +175,13 @@ describe(getName(__filename), () => {
       it('should throw Not found', async () => {
         await expect(fail(404)).rejects.toThrow(
           'Response code 404 (Not Found)'
+        );
+      });
+      it('should throw 410', async () => {
+        await expect(
+          fail(410, { message: 'Issues are disabled for this repo' })
+        ).rejects.toThrow(
+          'Response code 410 (Issues are disabled for this repo)'
         );
       });
       it('should throw rate limit exceeded', async () => {
@@ -187,6 +264,14 @@ describe(getName(__filename), () => {
           'Review cannot be requested from pull request author.'
         );
       });
+      it('should throw original error when pull requests aleady existed', async () => {
+        await expect(
+          fail(422, {
+            message: 'Validation error',
+            errors: [{ message: 'A pull request already exists' }],
+          })
+        ).rejects.toThrow('Validation error');
+      });
       it('should throw original error of unknown type', async () => {
         await expect(
           fail(418, {
@@ -198,20 +283,68 @@ describe(getName(__filename), () => {
   });
 
   describe('GraphQL', () => {
-    const query = `
-      query {
-        repository(owner: "testOwner", name: "testName") {
-          testItem (orderBy: {field: UPDATED_AT, direction: DESC}, filterBy: {createdBy: "someone"}) {
-            pageInfo {
-              endCursor
-              hasNextPage
-            }
-            nodes {
-              number state title body
-            }
-          }
-        }
-      }`;
+    const page1 = {
+      data: {
+        repository: {
+          testItem: {
+            pageInfo: {
+              endCursor: 'cursor1',
+              hasNextPage: true,
+            },
+            nodes: [
+              {
+                number: 1,
+                state: 'OPEN',
+                title: 'title-1',
+                body: 'the body 1',
+              },
+            ],
+          },
+        },
+      },
+    };
+
+    const page2 = {
+      data: {
+        repository: {
+          testItem: {
+            pageInfo: {
+              endCursor: 'cursor2',
+              hasNextPage: true,
+            },
+            nodes: [
+              {
+                number: 2,
+                state: 'CLOSED',
+                title: 'title-2',
+                body: 'the body 2',
+              },
+            ],
+          },
+        },
+      },
+    };
+
+    const page3 = {
+      data: {
+        repository: {
+          testItem: {
+            pageInfo: {
+              endCursor: 'cursor3',
+              hasNextPage: false,
+            },
+            nodes: [
+              {
+                number: 3,
+                state: 'OPEN',
+                title: 'title-3',
+                body: 'the body 3',
+              },
+            ],
+          },
+        },
+      },
+    };
 
     it('strips path from baseUrl', async () => {
       setBaseUrl('https://ghe.mycompany.com/api/v3/');
@@ -220,18 +353,20 @@ describe(getName(__filename), () => {
         .scope('https://ghe.mycompany.com')
         .post('/api/graphql')
         .reply(200, { data: { repository } });
-      await githubApi.queryRepo(query);
+      await githubApi.requestGraphql(graphqlQuery);
       const [req] = httpMock.getTrace();
       expect(req).toBeDefined();
-      expect(req.url).toEqual('https://ghe.mycompany.com/api/graphql');
+      expect(req.url).toBe('https://ghe.mycompany.com/api/graphql');
     });
     it('supports app mode', async () => {
-      hostRules.add({ hostType: 'github', token: 'x-access-token:abc123' });
+      hostRules.add({ hostType: 'github', token: 'x-access-token:123test' });
       httpMock
         .scope(githubApiHost)
         .post('/graphql')
         .reply(200, { data: { repository: { testItem: 'XXX' } } });
-      await githubApi.queryRepoField(query, 'testItem', { paginate: false });
+      await githubApi.queryRepoField(graphqlQuery, 'testItem', {
+        paginate: false,
+      });
       const [req] = httpMock.getTrace();
       expect(req).toBeDefined();
       expect(req.headers.accept).toBe(
@@ -248,7 +383,9 @@ describe(getName(__filename), () => {
           },
         });
       expect(
-        await githubApi.queryRepoField(query, 'testItem', { paginate: false })
+        await githubApi.queryRepoField(graphqlQuery, 'testItem', {
+          paginate: false,
+        })
       ).toEqual([]);
     });
     it('returns empty array for undefined data.', async () => {
@@ -259,13 +396,15 @@ describe(getName(__filename), () => {
           data: { repository: { otherField: 'someval' } },
         });
       expect(
-        await githubApi.queryRepoField(query, 'testItem', { paginate: false })
+        await githubApi.queryRepoField(graphqlQuery, 'testItem', {
+          paginate: false,
+        })
       ).toEqual([]);
     });
     it('throws errors for invalid responses', async () => {
       httpMock.scope(githubApiHost).post('/graphql').reply(418);
       await expect(
-        githubApi.queryRepoField(query, 'someItem', {
+        githubApi.queryRepoField(graphqlQuery, 'someItem', {
           paginate: false,
         })
       ).rejects.toThrow("Response code 418 (I'm a Teapot)");
@@ -280,7 +419,7 @@ describe(getName(__filename), () => {
             someprop: 'someval',
           },
         });
-      await githubApi.queryRepoField(query, 'testItem');
+      await githubApi.queryRepoField(graphqlQuery, 'testItem');
       expect(httpMock.getTrace()).toHaveLength(7);
     });
     it('queryRepo', async () => {
@@ -293,80 +432,64 @@ describe(getName(__filename), () => {
         .post('/graphql')
         .reply(200, { data: { repository } });
 
-      const result = await githubApi.queryRepo(query);
+      const { data } = await githubApi.requestGraphql(graphqlQuery);
       expect(httpMock.getTrace()).toHaveLength(1);
-      expect(result).toStrictEqual(repository);
+      expect(data).toStrictEqual({ repository });
     });
     it('queryRepoField', async () => {
       httpMock
         .scope(githubApiHost)
         .post('/graphql')
-        .reply(200, {
-          data: {
-            repository: {
-              testItem: {
-                pageInfo: {
-                  endCursor: 'cursor1',
-                  hasNextPage: true,
-                },
-                nodes: [
-                  {
-                    number: 1,
-                    state: 'OPEN',
-                    title: 'title-1',
-                    body: 'the body 1',
-                  },
-                ],
-              },
-            },
-          },
-        })
+        .reply(200, page1)
         .post('/graphql')
-        .reply(200, {
-          data: {
-            repository: {
-              testItem: {
-                pageInfo: {
-                  endCursor: 'cursor2',
-                  hasNextPage: true,
-                },
-                nodes: [
-                  {
-                    number: 2,
-                    state: 'CLOSED',
-                    title: 'title-2',
-                    body: 'the body 2',
-                  },
-                ],
-              },
-            },
-          },
-        })
+        .reply(200, page2)
         .post('/graphql')
-        .reply(200, {
-          data: {
-            repository: {
-              testItem: {
-                pageInfo: {
-                  endCursor: 'cursor3',
-                  hasNextPage: false,
-                },
-                nodes: [
-                  {
-                    number: 3,
-                    state: 'OPEN',
-                    title: 'title-3',
-                    body: 'the body 3',
-                  },
-                ],
-              },
-            },
-          },
-        });
+        .reply(200, page3);
 
-      const items = await githubApi.queryRepoField(query, 'testItem');
+      const items = await githubApi.queryRepoField(graphqlQuery, 'testItem');
       expect(httpMock.getTrace()).toHaveLength(3);
       expect(items).toHaveLength(3);
+    });
+    it('limit result size', async () => {
+      httpMock
+        .scope(githubApiHost)
+        .post('/graphql')
+        .reply(200, page1)
+        .post('/graphql')
+        .reply(200, page2);
+
+      const items = await githubApi.queryRepoField(graphqlQuery, 'testItem', {
+        limit: 2,
+      });
+      expect(httpMock.getTrace()).toHaveLength(2);
+      expect(items).toHaveLength(2);
+    });
+    it('shrinks items count on 50x', async () => {
+      httpMock
+        .scope(githubApiHost)
+        .post('/graphql')
+        .reply(200, page1)
+        .post('/graphql')
+        .reply(500)
+        .post('/graphql')
+        .reply(200, page2)
+        .post('/graphql')
+        .reply(200, page3);
+
+      const items = await githubApi.queryRepoField(graphqlQuery, 'testItem');
+      expect(items).toHaveLength(3);
+
+      const trace = httpMock.getTrace();
+      expect(trace).toHaveLength(4);
+      expect(trace).toMatchSnapshot();
+    });
+    it('throws on 50x if count < 10', async () => {
+      httpMock.scope(githubApiHost).post('/graphql').reply(500);
+      await expect(
+        githubApi.queryRepoField(graphqlQuery, 'testItem', {
+          count: 9,
+        })
+      ).rejects.toThrow(EXTERNAL_HOST_ERROR);
     });
   });
 });

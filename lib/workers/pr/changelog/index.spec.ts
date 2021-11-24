@@ -1,9 +1,9 @@
 import * as httpMock from '../../../../test/http-mock';
-import { getName, partial } from '../../../../test/util';
-import { PLATFORM_TYPE_GITHUB } from '../../../constants/platforms';
+import { partial } from '../../../../test/util';
+import { PlatformId } from '../../../constants';
 import * as hostRules from '../../../util/host-rules';
 import * as semverVersioning from '../../../versioning/semver';
-import { BranchConfig } from '../../common';
+import type { BranchConfig } from '../../types';
 import { ChangeLogError, getChangeLogJSON } from '.';
 
 jest.mock('../../../datasource/npm');
@@ -14,8 +14,8 @@ const upgrade: BranchConfig = partial<BranchConfig>({
   endpoint: 'https://api.github.com/',
   depName: 'renovate',
   versioning: semverVersioning.id,
-  fromVersion: '1.0.0',
-  toVersion: '3.0.0',
+  currentVersion: '1.0.0',
+  newVersion: '3.0.0',
   sourceUrl: 'https://github.com/chalk/chalk',
   releases: [
     { version: '0.9.0' },
@@ -31,20 +31,15 @@ const upgrade: BranchConfig = partial<BranchConfig>({
   ],
 });
 
-describe(getName(__filename), () => {
+describe('workers/pr/changelog/index', () => {
   describe('getChangeLogJSON', () => {
     beforeEach(() => {
-      httpMock.setup();
       hostRules.clear();
       hostRules.add({
-        hostType: PLATFORM_TYPE_GITHUB,
-        baseUrl: 'https://api.github.com/',
+        hostType: PlatformId.Github,
+        matchHost: 'https://api.github.com/',
         token: 'abc',
       });
-    });
-
-    afterEach(() => {
-      httpMock.reset();
     });
 
     it('returns null if @types', async () => {
@@ -52,12 +47,12 @@ describe(getName(__filename), () => {
       expect(
         await getChangeLogJSON({
           ...upgrade,
-          fromVersion: null,
+          currentVersion: null,
         })
       ).toBeNull();
       expect(httpMock.getTrace()).toHaveLength(0);
     });
-    it('returns null if no fromVersion', async () => {
+    it('returns null if no currentVersion', async () => {
       httpMock.scope(githubApiHost);
       expect(
         await getChangeLogJSON({
@@ -67,13 +62,13 @@ describe(getName(__filename), () => {
       ).toBeNull();
       expect(httpMock.getTrace()).toHaveLength(0);
     });
-    it('returns null if fromVersion equals toVersion', async () => {
+    it('returns null if currentVersion equals newVersion', async () => {
       httpMock.scope(githubApiHost);
       expect(
         await getChangeLogJSON({
           ...upgrade,
-          fromVersion: '1.0.0',
-          toVersion: '1.0.0',
+          currentVersion: '1.0.0',
+          newVersion: '1.0.0',
         })
       ).toBeNull();
       expect(httpMock.getTrace()).toHaveLength(0);
@@ -99,6 +94,7 @@ describe(getName(__filename), () => {
         .get('/repos/chalk/chalk/releases?per_page=100')
         .times(4)
         .reply(500);
+      // FIXME: explicit assert condition
       expect(
         await getChangeLogJSON({
           ...upgrade,
@@ -121,6 +117,7 @@ describe(getName(__filename), () => {
         .persist()
         .get(/.*/)
         .reply(200, []);
+      // FIXME: explicit assert condition
       expect(
         await getChangeLogJSON({
           ...upgrade,
@@ -138,16 +135,20 @@ describe(getName(__filename), () => {
         ...upgrade,
         depName: '@renovate/no',
       });
+      // FIXME: explicit assert condition
       expect(res).toMatchSnapshot();
       expect(httpMock.getTrace()).toMatchSnapshot();
     });
     it('supports node engines', async () => {
+      // FIXME: explicit assert condition
       expect(
         await getChangeLogJSON({
           ...upgrade,
           depType: 'engines',
         })
       ).toMatchSnapshot();
+      // FIXME: missing mocks
+      httpMock.clear(false);
     });
     it('handles no sourceUrl', async () => {
       expect(
@@ -192,10 +193,11 @@ describe(getName(__filename), () => {
     it('supports github enterprise and github.com changelog', async () => {
       httpMock.scope(githubApiHost).persist().get(/.*/).reply(200, []);
       hostRules.add({
-        hostType: PLATFORM_TYPE_GITHUB,
+        hostType: PlatformId.Github,
         token: 'super_secret',
-        baseUrl: 'https://github-enterprise.example.com/',
+        matchHost: 'https://github-enterprise.example.com/',
       });
+      // FIXME: explicit assert condition
       expect(
         await getChangeLogJSON({
           ...upgrade,
@@ -211,11 +213,12 @@ describe(getName(__filename), () => {
         .get(/.*/)
         .reply(200, []);
       hostRules.add({
-        hostType: PLATFORM_TYPE_GITHUB,
-        baseUrl: 'https://github-enterprise.example.com/',
+        hostType: PlatformId.Github,
+        matchHost: 'https://github-enterprise.example.com/',
         token: 'abc',
       });
       process.env.GITHUB_ENDPOINT = '';
+      // FIXME: explicit assert condition
       expect(
         await getChangeLogJSON({
           ...upgrade,
@@ -233,10 +236,11 @@ describe(getName(__filename), () => {
         .get(/.*/)
         .reply(200, []);
       hostRules.add({
-        hostType: PLATFORM_TYPE_GITHUB,
-        baseUrl: 'https://github-enterprise.example.com/',
+        hostType: PlatformId.Github,
+        matchHost: 'https://github-enterprise.example.com/',
         token: 'abc',
       });
+      // FIXME: explicit assert condition
       expect(
         await getChangeLogJSON({
           ...upgrade,

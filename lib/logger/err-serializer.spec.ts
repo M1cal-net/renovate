@@ -17,10 +17,11 @@ describe('logger/err-serializer', () => {
       },
       options: {
         headers: {
-          authorization: 'Bearer abc',
+          authorization: 'Bearer testtoken',
         },
       },
     });
+    // FIXME: explicit assert condition
     expect(errSerializer(err)).toMatchSnapshot();
   });
   it('handles missing fields', () => {
@@ -29,6 +30,7 @@ describe('logger/err-serializer', () => {
       stack: 'foo',
       body: 'some body',
     });
+    // FIXME: explicit assert condition
     expect(errSerializer(err)).toMatchSnapshot();
   });
 
@@ -38,16 +40,14 @@ describe('logger/err-serializer', () => {
     beforeEach(() => {
       // reset module
       jest.resetAllMocks();
-      httpMock.setup();
       // clean up hostRules
       hostRules.clear();
       hostRules.add({
         hostType: 'any',
-        baseUrl,
+        matchHost: baseUrl,
         token: 'token',
       });
     });
-    afterEach(() => httpMock.reset());
 
     it('handles http error', async () => {
       httpMock
@@ -87,7 +87,15 @@ describe('logger/err-serializer', () => {
       delete err.stack;
 
       // sanitize like Bunyan
-      expect(sanitizeValue(err)).toMatchSnapshot();
+      expect(sanitizeValue(err)).toMatchSnapshot({
+        name: 'HTTPError',
+        options: {
+          method: 'POST',
+          password: '***********',
+          url: 'https://:**redacted**@github.com/api',
+          username: '',
+        },
+      });
     });
   });
 });

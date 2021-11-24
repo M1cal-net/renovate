@@ -1,10 +1,11 @@
 import { defaultConfig, git, partial } from '../../../test/util';
-import { BranchConfig } from '../common';
+import { setGlobalConfig } from '../../config/global';
+import type { BranchConfig } from '../types';
 import { commitFilesToBranch } from './commit';
 
 jest.mock('../../util/git');
 
-describe('workers/branch/automerge', () => {
+describe('workers/branch/commit', () => {
   describe('commitFilesToBranch', () => {
     let config: BranchConfig;
     beforeEach(() => {
@@ -19,7 +20,8 @@ describe('workers/branch/automerge', () => {
         updatedArtifacts: [],
       });
       jest.resetAllMocks();
-      git.commitFiles.mockResolvedValueOnce('abc123');
+      git.commitFiles.mockResolvedValueOnce('123test');
+      setGlobalConfig();
     });
     it('handles empty files', async () => {
       await commitFilesToBranch(config);
@@ -35,7 +37,7 @@ describe('workers/branch/automerge', () => {
       expect(git.commitFiles.mock.calls).toMatchSnapshot();
     });
     it('dry runs', async () => {
-      config.dryRun = true;
+      setGlobalConfig({ dryRun: true });
       config.updatedPackageFiles.push({
         name: 'package.json',
         contents: 'some contents',

@@ -14,10 +14,12 @@ Array [
         "prettyDepType": "dependency",
       },
     ],
-    "ignoreNpmrcFile": undefined,
     "lernaClient": undefined,
-    "lernaDir": undefined,
     "lernaPackages": undefined,
+    "managerData": Object {
+      "lernaJsonFile": undefined,
+      "yarnZeroInstall": false,
+    },
     "npmLock": undefined,
     "npmrc": undefined,
     "packageFile": "package.json",
@@ -28,25 +30,6 @@ Array [
     "skipInstalls": undefined,
     "yarnLock": undefined,
     "yarnWorkspacesPackages": undefined,
-    "yarnrc": undefined,
-  },
-]
-`;
-
-exports[`workers/repository/extract/manager-files getManagerPackageFiles() returns files with extractPackageFile 1`] = `
-Array [
-  Object {
-    "deps": Array [
-      Object {
-        "depIndex": 0,
-      },
-      Object {
-        "depIndex": 1,
-        "replaceString": "abc",
-      },
-    ],
-    "manager": "html",
-    "packageFile": "Dockerfile",
   },
 ]
 `;

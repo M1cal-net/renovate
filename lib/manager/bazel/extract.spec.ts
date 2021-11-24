@@ -1,22 +1,12 @@
-import { readFileSync } from 'fs';
+import { loadFixture } from '../../../test/util';
 import { extractPackageFile } from './extract';
 
-const workspaceFile = readFileSync(
-  'lib/manager/bazel/__fixtures__/WORKSPACE1',
-  'utf8'
-);
+const workspaceFile = loadFixture('WORKSPACE1');
+const workspace2File = loadFixture('WORKSPACE2');
+const workspace3File = loadFixture('WORKSPACE3');
+const fileWithBzlExtension = loadFixture('repositories.bzl');
 
-const workspace2File = readFileSync(
-  'lib/manager/bazel/__fixtures__/WORKSPACE2',
-  'utf8'
-);
-
-const fileWithBzlExtension = readFileSync(
-  'lib/manager/bazel/__fixtures__/repositories.bzl',
-  'utf8'
-);
-
-describe('lib/manager/bazel/extract', () => {
+describe('manager/bazel/extract', () => {
   describe('extractPackageFile()', () => {
     it('returns empty if fails to parse', () => {
       const res = extractPackageFile('blahhhhh:foo:@what\n');
@@ -28,15 +18,34 @@ describe('lib/manager/bazel/extract', () => {
     });
     it('extracts multiple types of dependencies', () => {
       const res = extractPackageFile(workspaceFile);
+      expect(res.deps).toHaveLength(14);
       expect(res.deps).toMatchSnapshot();
     });
     it('extracts github tags', () => {
       const res = extractPackageFile(workspace2File);
-      expect(res.deps).toMatchSnapshot();
+      expect(res.deps).toMatchSnapshot([
+        { lookupName: 'lmirosevic/GBDeviceInfo' },
+        { lookupName: 'nelhage/rules_boost' },
+        { lookupName: 'lmirosevic/GBDeviceInfo' },
+        { lookupName: 'nelhage/rules_boost' },
+      ]);
+    });
+    it('handle comments and strings', () => {
+      const res = extractPackageFile(workspace3File);
+      expect(res.deps).toMatchSnapshot([{ lookupName: 'nelhage/rules_boost' }]);
     });
     it('extracts dependencies from *.bzl files', () => {
       const res = extractPackageFile(fileWithBzlExtension);
-      expect(res.deps).toMatchSnapshot();
+      expect(res.deps).toMatchSnapshot([
+        {
+          currentDigest: '0356bef3fbbabec5f0e196ecfacdeb6db62d48c0',
+          lookupName: 'google/subpar',
+        },
+        {
+          currentValue: '0.6.0',
+          lookupName: 'bazelbuild/bazel-skylib',
+        },
+      ]);
     });
 
     it('extracts dependencies for container_pull deptype', () => {
@@ -51,7 +60,16 @@ describe('lib/manager/bazel/extract', () => {
           tag="v1.0.0-alpha31.cli-migrations"
         )`
       );
-      expect(res.deps).toMatchSnapshot();
+      expect(res.deps).toMatchSnapshot([
+        {
+          currentDigest:
+            'sha256:a4e8d8c444ca04fe706649e82263c9f4c2a4229bc30d2a64561b5e1d20cc8548',
+          currentValue: 'v1.0.0-alpha31.cli-migrations',
+          depType: 'container_pull',
+          lookupName: 'hasura/graphql-engine',
+          registryUrls: ['index.docker.io'],
+        },
+      ]);
     });
 
     it('check remote option in go_repository', () => {

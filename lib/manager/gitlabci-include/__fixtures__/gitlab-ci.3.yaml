@@ -1,6 +1,5 @@
 include:
-- local: 'lib/manager/gitlabci-include/__fixtures__/include.1.yml'
-- local: 'lib/manager/gitlabci-include/__fixtures__/include.2.yml'
 
-stages:
-- test
+script:
+- !reference [.setup, script]
+- !reference [arbitrary job name with space and no starting dot, nested1, nested2, nested3]

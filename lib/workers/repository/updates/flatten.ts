@@ -1,17 +1,45 @@
 import {
-  RenovateConfig,
   filterConfig,
   getManagerConfig,
   mergeChildConfig,
 } from '../../../config';
-import { LANGUAGE_DOCKER } from '../../../constants/languages';
+import type { RenovateConfig } from '../../../config/types';
 import { getDefaultConfig } from '../../../datasource';
 import { get } from '../../../manager';
 import { applyPackageRules } from '../../../util/package-rules';
+import { regEx } from '../../../util/regex';
+import { parseUrl } from '../../../util/url';
+import type { BranchUpgradeConfig } from '../../types';
 import { generateBranchName } from './branch-name';
 
 const upper = (str: string): string =>
   str.charAt(0).toUpperCase() + str.substr(1);
+
+export function applyUpdateConfig(input: BranchUpgradeConfig): any {
+  const updateConfig = { ...input };
+  delete updateConfig.packageRules;
+  // TODO: Remove next line once #8075 is complete
+  updateConfig.depNameSanitized = updateConfig.depName
+    ? updateConfig.depName
+        .replace('@types/', '')
+        .replace('@', '')
+        .replace(regEx(/\//g), '-') // TODO #12071
+        .replace(regEx(/\s+/g), '-') // TODO #12071
+        .replace(regEx(/-+/), '-')
+        .toLowerCase()
+    : undefined;
+  if (updateConfig.sourceUrl) {
+    const parsedSourceUrl = parseUrl(updateConfig.sourceUrl);
+    if (parsedSourceUrl?.pathname) {
+      updateConfig.sourceRepoSlug = parsedSourceUrl.pathname
+        .replace(regEx(/^\//), '') // remove leading slash  // TODO #12071
+        .replace(regEx(/\//g), '-') // change slashes to hyphens   // TODO #12071
+        .replace(regEx(/-+/g), '-'); // remove multiple hyphens
+    }
+  }
+  generateBranchName(updateConfig);
+  return updateConfig;
+}
 
 export async function flattenUpdates(
   config: RenovateConfig,
@@ -31,15 +59,16 @@ export async function flattenUpdates(
     for (const packageFile of files) {
       const packageFileConfig = mergeChildConfig(managerConfig, packageFile);
       const packagePath = packageFile.packageFile?.split('/');
+      // istanbul ignore else: can never happen and would throw
       if (packagePath.length > 0) {
         packagePath.splice(-1, 1);
       }
       if (packagePath.length > 0) {
         packageFileConfig.parentDir = packagePath[packagePath.length - 1];
-        packageFileConfig.baseDir = packagePath.join('/');
+        packageFileConfig.packageFileDir = packagePath.join('/');
       } else {
         packageFileConfig.parentDir = '';
-        packageFileConfig.baseDir = '';
+        packageFileConfig.packageFileDir = '';
       }
       for (const dep of packageFile.deps) {
         if (dep.updates.length) {
@@ -48,8 +77,6 @@ export async function flattenUpdates(
           for (const update of dep.updates) {
             let updateConfig = mergeChildConfig(depConfig, update);
             delete updateConfig.updates;
-            // Massage legacy vars just in case
-            updateConfig.currentVersion = updateConfig.currentValue;
             updateConfig.newVersion =
               updateConfig.newVersion || updateConfig.newValue;
             if (updateConfig.updateType) {
@@ -76,28 +103,9 @@ export async function flattenUpdates(
             }
             // Apply again in case any were added by the updateType config
             updateConfig = applyPackageRules(updateConfig);
-            delete updateConfig.packageRules;
-            updateConfig.depNameSanitized = updateConfig.depName
-              ? updateConfig.depName
-                  .replace('@types/', '')
-                  .replace('@', '')
-                  .replace(/\//g, '-')
-                  .replace(/\s+/g, '-')
-                  .toLowerCase()
-              : undefined;
-            if (
-              updateConfig.language === LANGUAGE_DOCKER &&
-              updateConfig.depName.match(/(^|\/)node$/) &&
-              updateConfig.depName !== 'calico/node'
-            ) {
-              updateConfig.additionalBranchPrefix = '';
-              updateConfig.depNameSanitized = 'node';
-            }
-            generateBranchName(updateConfig);
-            update.branchName = updateConfig.branchName; // for writing to cache
-            delete updateConfig.repoIsOnboarded;
-            delete updateConfig.renovateJsonPresent;
+            updateConfig = applyUpdateConfig(updateConfig);
             updateConfig.baseDeps = packageFile.deps;
+            update.branchName = updateConfig.branchName;
             updates.push(updateConfig);
           }
         }
@@ -128,9 +136,36 @@ export async function flattenUpdates(
         generateBranchName(lockFileConfig);
         updates.push(lockFileConfig);
       }
+      if (get(manager, 'updateLockedDependency')) {
+        for (const lockFile of packageFileConfig.lockFiles || []) {
+          const remediations = config.remediations?.[lockFile];
+          if (remediations) {
+            for (const remediation of remediations) {
+              let updateConfig = mergeChildConfig(
+                packageFileConfig,
+                remediation
+              );
+              updateConfig = mergeChildConfig(
+                updateConfig,
+                config.vulnerabilityAlerts
+              );
+              delete updateConfig.vulnerabilityAlerts;
+              updateConfig.isVulnerabilityAlert = true;
+              updateConfig.isRemediation = true;
+              updateConfig.lockFile = lockFile;
+              updateConfig.currentValue = updateConfig.currentVersion;
+              updateConfig.newValue = updateConfig.newVersion;
+              updateConfig = applyUpdateConfig(updateConfig);
+              updateConfig.enabled = true;
+              updates.push(updateConfig);
+            }
+          }
+        }
+      }
     }
   }
   return updates
     .filter((update) => update.enabled)
+    .map(({ vulnerabilityAlerts, ...update }) => update)
     .map((update) => filterConfig(update, 'branch'));
 }

@@ -1,17 +1,10 @@
-import { readFileSync } from 'fs';
+import { loadFixture } from '../../../test/util';
 import { extractPackageFile } from './extract';
 
-const workflow1 = readFileSync(
-  'lib/manager/github-actions/__fixtures__/workflow.yml.1',
-  'utf8'
-);
+const workflow1 = loadFixture('workflow_1.yml');
+const workflow2 = loadFixture('workflow_2.yml');
 
-const workflow2 = readFileSync(
-  'lib/manager/github-actions/__fixtures__/workflow.yml.2',
-  'utf8'
-);
-
-describe('lib/manager/github-actions/extract', () => {
+describe('manager/github-actions/extract', () => {
   describe('extractPackageFile()', () => {
     it('returns null for empty', () => {
       expect(extractPackageFile('nothing here')).toBeNull();
@@ -26,7 +19,7 @@ describe('lib/manager/github-actions/extract', () => {
       expect(res.deps).toMatchSnapshot();
       expect(
         res.deps.filter((d) => d.datasource === 'github-tags')
-      ).toHaveLength(3);
+      ).toHaveLength(5);
     });
   });
 });

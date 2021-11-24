@@ -1,13 +1,10 @@
 import { NormalizedOptions } from 'got';
-import { getName, partial } from '../../../test/util';
-import {
-  PLATFORM_TYPE_GITEA,
-  PLATFORM_TYPE_GITLAB,
-} from '../../constants/platforms';
+import { partial } from '../../../test/util';
+import { PlatformId } from '../../constants';
 import { applyAuthorization, removeAuthorization } from './auth';
 import { GotOptions } from './types';
 
-describe(getName(__filename), () => {
+describe('util/http/auth', () => {
   describe('applyAuthorization', () => {
     it('does nothing', () => {
       const opts: GotOptions = {
@@ -32,7 +29,7 @@ describe(getName(__filename), () => {
     it('gitea password', () => {
       const opts: GotOptions = {
         headers: {},
-        hostType: PLATFORM_TYPE_GITEA,
+        hostType: PlatformId.Gitea,
         password: 'XXXX',
       };
 
@@ -53,7 +50,7 @@ describe(getName(__filename), () => {
       const opts: GotOptions = {
         headers: {},
         token: 'XXXX',
-        hostType: PLATFORM_TYPE_GITEA,
+        hostType: PlatformId.Gitea,
       };
 
       applyAuthorization(opts);
@@ -69,12 +66,49 @@ describe(getName(__filename), () => {
       `);
     });
 
+    it('github token', () => {
+      const opts: GotOptions = {
+        headers: {},
+        token: 'XXX',
+        hostType: PlatformId.Github,
+      };
+
+      applyAuthorization(opts);
+
+      expect(opts).toEqual({
+        headers: {
+          authorization: 'token XXX',
+        },
+        hostType: 'github',
+        token: 'XXX',
+      });
+    });
+
+    it('github token for datasource using github api', () => {
+      const opts: GotOptions = {
+        headers: {},
+        token: 'ZZZZ',
+        hostType: 'github-releases',
+      };
+      applyAuthorization(opts);
+
+      expect(opts).toMatchInlineSnapshot(`
+        Object {
+          "headers": Object {
+            "authorization": "token ZZZZ",
+          },
+          "hostType": "github-releases",
+          "token": "ZZZZ",
+        }
+      `);
+    });
+
     it(`gitlab personal access token`, () => {
       const opts: GotOptions = {
         headers: {},
         // Personal Access Token is exactly 20 characters long
-        token: '01234567890123456789',
-        hostType: PLATFORM_TYPE_GITLAB,
+        token: '0123456789012345test',
+        hostType: PlatformId.Gitlab,
       };
 
       applyAuthorization(opts);
@@ -82,10 +116,10 @@ describe(getName(__filename), () => {
       expect(opts).toMatchInlineSnapshot(`
         Object {
           "headers": Object {
-            "Private-token": "01234567890123456789",
+            "Private-token": "0123456789012345test",
           },
           "hostType": "gitlab",
-          "token": "01234567890123456789",
+          "token": "0123456789012345test",
         }
       `);
     });
@@ -94,8 +128,8 @@ describe(getName(__filename), () => {
       const opts: GotOptions = {
         headers: {},
         token:
-          'a40bdd925a0c0b9c4cdd19d101c0df3b2bcd063ab7ad6706f03bcffcec01e863',
-        hostType: PLATFORM_TYPE_GITLAB,
+          'a40bdd925a0c0b9c4cdd19d101c0df3b2bcd063ab7ad6706f03bcffcec01test',
+        hostType: PlatformId.Gitlab,
       };
 
       applyAuthorization(opts);
@@ -103,12 +137,58 @@ describe(getName(__filename), () => {
       expect(opts).toMatchInlineSnapshot(`
         Object {
           "headers": Object {
-            "authorization": "Bearer a40bdd925a0c0b9c4cdd19d101c0df3b2bcd063ab7ad6706f03bcffcec01e863",
+            "authorization": "Bearer a40bdd925a0c0b9c4cdd19d101c0df3b2bcd063ab7ad6706f03bcffcec01test",
           },
           "hostType": "gitlab",
-          "token": "a40bdd925a0c0b9c4cdd19d101c0df3b2bcd063ab7ad6706f03bcffcec01e863",
+          "token": "a40bdd925a0c0b9c4cdd19d101c0df3b2bcd063ab7ad6706f03bcffcec01test",
         }
       `);
+    });
+
+    it(`npm basic token`, () => {
+      const opts: GotOptions = {
+        headers: {},
+        token: 'test',
+        hostType: 'npm',
+        context: {
+          authType: 'Basic',
+        },
+      };
+
+      applyAuthorization(opts);
+
+      expect(opts).toEqual({
+        context: {
+          authType: 'Basic',
+        },
+        headers: {
+          authorization: 'Basic test',
+        },
+        hostType: 'npm',
+        token: 'test',
+      });
+    });
+
+    it(`bare token`, () => {
+      const opts: GotOptions = {
+        headers: {},
+        token: 'test',
+        context: {
+          authType: 'Token-Only',
+        },
+      };
+
+      applyAuthorization(opts);
+
+      expect(opts).toEqual({
+        context: {
+          authType: 'Token-Only',
+        },
+        headers: {
+          authorization: 'test',
+        },
+        token: 'test',
+      });
     });
   });
 
@@ -179,8 +259,7 @@ describe(getName(__filename), () => {
           authorization: 'auth',
         },
         hostname: 'store123.blob.core.windows.net',
-        href:
-          'https://<store>.blob.core.windows.net/<some id>//docker/registry/v2/blobs',
+        href: 'https://<store>.blob.core.windows.net/<some id>//docker/registry/v2/blobs',
       });
 
       removeAuthorization(opts);
@@ -188,8 +267,7 @@ describe(getName(__filename), () => {
       expect(opts).toEqual({
         headers: {},
         hostname: 'store123.blob.core.windows.net',
-        href:
-          'https://<store>.blob.core.windows.net/<some id>//docker/registry/v2/blobs',
+        href: 'https://<store>.blob.core.windows.net/<some id>//docker/registry/v2/blobs',
       });
     });
 

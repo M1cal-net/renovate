@@ -1,6 +1,9 @@
-import { extractPackageFile } from './extract';
+import { loadFixture } from '../../../test/util';
+import { extractPackageFile } from '.';
 
-describe('lib/manager/helmfile/extract', () => {
+const multidocYaml = loadFixture('multidoc.yaml');
+
+describe('manager/helmfile/extract', () => {
   describe('extractPackageFile()', () => {
     beforeEach(() => {
       jest.resetAllMocks();
@@ -15,7 +18,7 @@ describe('lib/manager/helmfile/extract', () => {
       const fileName = 'helmfile.yaml';
       const result = extractPackageFile(content, fileName, {
         aliases: {
-          stable: 'https://kubernetes-charts.storage.googleapis.com/',
+          stable: 'https://charts.helm.sh/stable',
         },
       });
       expect(result).toBeNull();
@@ -32,7 +35,7 @@ describe('lib/manager/helmfile/extract', () => {
       const fileName = 'helmfile.yaml';
       const result = extractPackageFile(content, fileName, {
         aliases: {
-          stable: 'https://kubernetes-charts.storage.googleapis.com/',
+          stable: 'https://charts.helm.sh/stable',
         },
       });
       expect(result).toBeNull();
@@ -51,7 +54,7 @@ describe('lib/manager/helmfile/extract', () => {
       const fileName = 'helmfile.yaml';
       const result = extractPackageFile(content, fileName, {
         aliases: {
-          stable: 'https://kubernetes-charts.storage.googleapis.com/',
+          stable: 'https://charts.helm.sh/stable',
         },
       });
       expect(result).not.toBeNull();
@@ -75,11 +78,22 @@ describe('lib/manager/helmfile/extract', () => {
       const fileName = 'helmfile.yaml';
       const result = extractPackageFile(content, fileName, {
         aliases: {
-          stable: 'https://kubernetes-charts.storage.googleapis.com/',
+          stable: 'https://charts.helm.sh/stable',
         },
       });
-      expect(result).not.toBeNull();
-      expect(result).toMatchSnapshot();
+      expect(result).toMatchSnapshot({
+        datasource: 'helm',
+        deps: [
+          {
+            currentValue: '1.0.0',
+            skipReason: 'unsupported-chart-type',
+          },
+          {
+            currentValue: '1.0.0',
+            depName: 'example',
+          },
+        ],
+      });
     });
 
     it('skip local charts', () => {
@@ -95,7 +109,7 @@ describe('lib/manager/helmfile/extract', () => {
       const fileName = 'helmfile.yaml';
       const result = extractPackageFile(content, fileName, {
         aliases: {
-          stable: 'https://kubernetes-charts.storage.googleapis.com/',
+          stable: 'https://charts.helm.sh/stable',
         },
       });
       expect(result).not.toBeNull();
@@ -116,7 +130,7 @@ describe('lib/manager/helmfile/extract', () => {
       const fileName = 'helmfile.yaml';
       const result = extractPackageFile(content, fileName, {
         aliases: {
-          stable: 'https://kubernetes-charts.storage.googleapis.com/',
+          stable: 'https://charts.helm.sh/stable',
         },
       });
       expect(result).not.toBeNull();
@@ -140,7 +154,7 @@ describe('lib/manager/helmfile/extract', () => {
       const fileName = 'helmfile.yaml';
       const result = extractPackageFile(content, fileName, {
         aliases: {
-          stable: 'https://kubernetes-charts.storage.googleapis.com/',
+          stable: 'https://charts.helm.sh/stable',
         },
       });
       expect(result).not.toBeNull();
@@ -160,12 +174,30 @@ describe('lib/manager/helmfile/extract', () => {
       const fileName = 'helmfile.yaml';
       const result = extractPackageFile(content, fileName, {
         aliases: {
-          stable: 'https://kubernetes-charts.storage.googleapis.com/',
+          stable: 'https://charts.helm.sh/stable',
         },
       });
       expect(result).not.toBeNull();
       expect(result).toMatchSnapshot();
       expect(result.deps.every((dep) => dep.skipReason)).toBeTruthy();
+    });
+
+    it('parses multidoc yaml', () => {
+      const fileName = 'helmfile.yaml';
+      const result = extractPackageFile(multidocYaml, fileName, {
+        aliases: {
+          stable: 'https://charts.helm.sh/stable',
+        },
+      });
+      expect(result).toMatchSnapshot({
+        datasource: 'helm',
+        deps: [
+          { skipReason: 'local-chart' },
+          { depName: 'rabbitmq', currentValue: '7.4.3' },
+          { depName: 'kube-prometheus-stack', currentValue: '13.7.2' },
+          { depName: 'invalid', skipReason: 'invalid-name' },
+        ],
+      });
     });
   });
 });

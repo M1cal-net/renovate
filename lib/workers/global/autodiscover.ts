@@ -1,6 +1,6 @@
 import is from '@sindresorhus/is';
 import minimatch from 'minimatch';
-import { RenovateConfig } from '../../config';
+import type { AllConfig } from '../../config/types';
 import { logger } from '../../logger';
 import { platform } from '../../platform';
 
@@ -10,8 +10,8 @@ function repoName(value: string | { repository: string }): string {
 }
 
 export async function autodiscoverRepositories(
-  config: RenovateConfig
-): Promise<RenovateConfig> {
+  config: AllConfig
+): Promise<AllConfig> {
   if (!config.autodiscover) {
     if (!config.repositories?.length) {
       logger.warn(

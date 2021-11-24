@@ -1,8 +1,13 @@
+import is from '@sindresorhus/is';
 import { logger } from '../../../logger';
 import { ExternalHostError } from '../../../types/errors/external-host-error';
 import { GithubHttp } from '../../../util/http/github';
-import { Preset, PresetConfig } from '../common';
-import { PRESET_DEP_NOT_FOUND, fetchPreset } from '../util';
+import type { Preset, PresetConfig } from '../types';
+import {
+  PRESET_DEP_NOT_FOUND,
+  PRESET_INVALID_JSON,
+  fetchPreset,
+} from '../util';
 
 export const Endpoint = 'https://api.github.com/';
 
@@ -11,9 +16,15 @@ const http = new GithubHttp();
 export async function fetchJSONFile(
   repo: string,
   fileName: string,
-  endpoint: string
+  endpoint: string,
+  packageTag?: string
 ): Promise<Preset> {
-  const url = `${endpoint}repos/${repo}/contents/${fileName}`;
+  let ref = '';
+  if (is.nonEmptyString(packageTag)) {
+    ref = `?ref=${packageTag}`;
+  }
+  const url = `${endpoint}repos/${repo}/contents/${fileName}${ref}`;
+  logger.trace({ url }, `Preset URL`);
   let res: { body: { content: string } };
   try {
     res = await http.getJson(url);
@@ -33,19 +44,23 @@ export async function fetchJSONFile(
     const parsed = JSON.parse(content);
     return parsed;
   } catch (err) {
-    throw new Error('invalid preset JSON');
+    throw new Error(PRESET_INVALID_JSON);
   }
 }
 
 export function getPresetFromEndpoint(
   pkgName: string,
   filePreset: string,
-  endpoint = Endpoint
+  presetPath: string,
+  endpoint = Endpoint,
+  packageTag?: string
 ): Promise<Preset> {
   return fetchPreset({
     pkgName,
     filePreset,
+    presetPath,
     endpoint,
+    packageTag,
     fetch: fetchJSONFile,
   });
 }
@@ -53,6 +68,14 @@ export function getPresetFromEndpoint(
 export function getPreset({
   packageName: pkgName,
   presetName = 'default',
+  presetPath,
+  packageTag = null,
 }: PresetConfig): Promise<Preset> {
-  return getPresetFromEndpoint(pkgName, presetName, Endpoint);
+  return getPresetFromEndpoint(
+    pkgName,
+    presetName,
+    presetPath,
+    Endpoint,
+    packageTag
+  );
 }

@@ -1,13 +1,18 @@
 import is from '@sindresorhus/is';
-import * as datasourceGitTags from '../../datasource/git-tags';
+import { GitTagsDatasource } from '../../datasource/git-tags';
 import * as datasourcePackagist from '../../datasource/packagist';
 import { logger } from '../../logger';
 import { SkipReason } from '../../types';
 import { readLocalFile } from '../../util/fs';
+import { regEx } from '../../util/regex';
 import { api as semverComposer } from '../../versioning/composer';
-import { PackageDependency, PackageFile } from '../common';
-import type { ComposerConfig, ComposerLock, Repo } from './types';
-import { extractContraints } from './utils';
+import type { PackageDependency, PackageFile } from '../types';
+import type {
+  ComposerConfig,
+  ComposerLock,
+  ComposerManagerData,
+  Repo,
+} from './types';
 
 /**
  * The regUrl is expected to be a base URL. GitLab composer repository installation guide specifies
@@ -17,7 +22,7 @@ import { extractContraints } from './utils';
  * See https://github.com/composer/composer/blob/750a92b4b7aecda0e5b2f9b963f1cb1421900675/src/Composer/Repository/ComposerRepository.php#L815
  */
 function transformRegUrl(url: string): string {
-  return url.replace(/(\/packages\.json)$/, '');
+  return url.replace(regEx(/(\/packages\.json)$/), ''); // TODO #12071
 }
 
 /**
@@ -36,11 +41,10 @@ function parseRepositories(
     Object.entries(repoJson).forEach(([key, repo]) => {
       if (is.object(repo)) {
         const name = is.array(repoJson) ? repo.name : key;
-        // eslint-disable-next-line default-case
+
         switch (repo.type) {
           case 'vcs':
           case 'git':
-            // eslint-disable-next-line no-param-reassign
             repositories[name] = repo;
             break;
           case 'composer':
@@ -90,11 +94,12 @@ export async function extractPackageFile(
   const res: PackageFile = { deps: [] };
 
   // handle lockfile
-  const lockfilePath = fileName.replace(/\.json$/, '.lock');
+  const lockfilePath = fileName.replace(regEx(/\.json$/), '.lock');
   const lockContents = await readLocalFile(lockfilePath, 'utf8');
   let lockParsed: ComposerLock;
   if (lockContents) {
     logger.debug({ packageFile: fileName }, 'Found composer lock file');
+    res.lockFiles = [lockfilePath];
     try {
       lockParsed = JSON.parse(lockContents) as ComposerLock;
     } catch (err) /* istanbul ignore next */ {
@@ -109,8 +114,6 @@ export async function extractPackageFile(
   if (registryUrls.length !== 0) {
     res.registryUrls = registryUrls;
   }
-
-  res.constraints = extractContraints(composerJson, lockParsed);
 
   const deps = [];
   const depTypes = ['require', 'require-dev'];
@@ -127,11 +130,10 @@ export async function extractPackageFile(
 
           // Check custom repositories by type
           if (repositories[depName]) {
-            // eslint-disable-next-line default-case
             switch (repositories[depName].type) {
               case 'vcs':
               case 'git':
-                datasource = datasourceGitTags.id;
+                datasource = GitTagsDatasource.id;
                 lookupName = repositories[depName].url;
                 break;
             }
@@ -160,7 +162,7 @@ export async function extractPackageFile(
               (item) => item.name === dep.depName
             );
             if (lockedDep && semverComposer.isVersion(lockedDep.version)) {
-              dep.lockedVersion = lockedDep.version.replace(/^v/i, '');
+              dep.lockedVersion = lockedDep.version.replace(regEx(/^v/i), ''); // TODO #12071
             }
           }
           deps.push(dep);
@@ -175,8 +177,11 @@ export async function extractPackageFile(
     return null;
   }
   res.deps = deps;
-  if (composerJson.type) {
-    res.managerData = { composerJsonType: composerJson.type };
+  if (is.string(composerJson.type)) {
+    const managerData: ComposerManagerData = {
+      composerJsonType: composerJson.type,
+    };
+    res.managerData = managerData;
   }
   return res;
 }

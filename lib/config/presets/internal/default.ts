@@ -1,12 +1,12 @@
-import { Preset } from '../common';
+import type { Preset } from '../types';
 
 export const presets: Record<string, Preset> = {
   enableRenovate: {
-    description: 'Enable renovate',
+    description: 'Enable Renovate',
     enabled: true,
   },
   disableRenovate: {
-    description: 'Disable renovate',
+    description: 'Disable Renovate',
     enabled: false,
   },
   disableMajorUpdates: {
@@ -19,19 +19,25 @@ export const presets: Record<string, Preset> = {
     description: 'Disable requests to a particular domain',
     hostRules: [
       {
-        domainName: '{{arg0}}',
+        matchHost: '{{arg0}}',
         enabled: false,
       },
     ],
   },
   disableHost: {
-    description: 'Disable requests to a particular hostName',
+    description: 'Disable requests to a particular host',
     hostRules: [
       {
-        hostName: '{{arg0}}',
+        matchHost: 'https://{{arg0}}',
         enabled: false,
       },
     ],
+  },
+  enablePreCommit: {
+    description: 'Enable the pre-commit manager',
+    'pre-commit': {
+      enabled: true,
+    },
   },
   ignoreModulesAndTests: {
     description:
@@ -54,12 +60,12 @@ export const presets: Record<string, Preset> = {
   },
   pinVersions: {
     description:
-      'Use version pinning (maintain a single version only and not semver ranges)',
+      'Use version pinning (maintain a single version only and not SemVer ranges)',
     rangeStrategy: 'pin',
   },
   preserveSemverRanges: {
     description:
-      'Preserve (but continue to upgrade) any existing semver ranges',
+      'Preserve (but continue to upgrade) any existing SemVer ranges',
     rangeStrategy: 'replace',
   },
   pinAllExceptPeerDependencies: {
@@ -67,11 +73,11 @@ export const presets: Record<string, Preset> = {
       'Pin dependency versions for all except <code>peerDependencies</code>',
     packageRules: [
       {
-        packagePatterns: ['*'],
+        matchPackagePatterns: ['*'],
         rangeStrategy: 'pin',
       },
       {
-        depTypeList: ['engines', 'peerDependencies'],
+        matchDepTypes: ['engines', 'peerDependencies'],
         rangeStrategy: 'auto',
       },
     ],
@@ -80,7 +86,7 @@ export const presets: Record<string, Preset> = {
     description: 'Pin dependency versions for <code>dependencies</code>',
     packageRules: [
       {
-        depTypeList: ['dependencies'],
+        matchDepTypes: ['dependencies'],
         rangeStrategy: 'pin',
       },
     ],
@@ -89,25 +95,25 @@ export const presets: Record<string, Preset> = {
     description: 'Pin dependency versions for <code>devDependencies</code>',
     packageRules: [
       {
-        depTypeList: ['devDependencies'],
+        matchDepTypes: ['devDependencies'],
         rangeStrategy: 'pin',
       },
     ],
   },
   pinOnlyDevDependencies: {
     description:
-      'Pin dependency versions for <code>devDependencies</code> and retain semver ranges for others',
+      'Pin dependency versions for <code>devDependencies</code> and retain SemVer ranges for others',
     packageRules: [
       {
-        packagePatterns: ['*'],
+        matchPackagePatterns: ['*'],
         rangeStrategy: 'replace',
       },
       {
-        depTypeList: ['devDependencies'],
+        matchDepTypes: ['devDependencies'],
         rangeStrategy: 'pin',
       },
       {
-        depTypeList: ['peerDependencies'],
+        matchDepTypes: ['peerDependencies'],
         rangeStrategy: 'widen',
       },
     ],
@@ -161,7 +167,7 @@ export const presets: Record<string, Preset> = {
       'Do not renovate <code>peerDependencies</code> versions/ranges',
     packageRules: [
       {
-        depTypeList: ['peerDependencies'],
+        matchDepTypes: ['peerDependencies'],
         enabled: false,
       },
     ],
@@ -170,13 +176,13 @@ export const presets: Record<string, Preset> = {
     description: 'Do not renovate <code>devDependencies</code> versions/ranges',
     packageRules: [
       {
-        depTypeList: ['devDependencies'],
+        matchDepTypes: ['devDependencies'],
         enabled: false,
       },
     ],
   },
   disableDigestUpdates: {
-    description: 'Disable digest and git hash updates',
+    description: 'Disable digest and Git hash updates',
     digest: {
       enabled: false,
     },
@@ -186,11 +192,11 @@ export const presets: Record<string, Preset> = {
       'If semantic commits detected, use semantic commit type <code>fix</code> for dependencies and <code>chore</code> for all others',
     packageRules: [
       {
-        packagePatterns: ['*'],
+        matchPackagePatterns: ['*'],
         semanticCommitType: 'chore',
       },
       {
-        depTypeList: ['dependencies'],
+        matchDepTypes: ['dependencies', 'require'],
         semanticCommitType: 'fix',
       },
     ],
@@ -200,7 +206,7 @@ export const presets: Record<string, Preset> = {
       'If semantic commits detected, use semantic commit type <code>{{arg0}}</code> for all',
     packageRules: [
       {
-        packagePatterns: ['*'],
+        matchPackagePatterns: ['*'],
         semanticCommitType: '{{arg0}}',
       },
     ],
@@ -236,11 +242,11 @@ export const presets: Record<string, Preset> = {
     prHourlyLimit: 4,
   },
   prConcurrentLimitNone: {
-    description: 'Remove limit for open PRs',
+    description: 'Remove limit for open PRs at any time',
     prConcurrentLimit: 0,
   },
   prConcurrentLimit10: {
-    description: 'Limit to maximum 10 open PRs',
+    description: 'Limit to maximum 10 open PRs at any time',
     prConcurrentLimit: 10,
   },
   prConcurrentLimit20: {
@@ -304,27 +310,17 @@ export const presets: Record<string, Preset> = {
       'If automerging, push the new commit directly to base branch (no PR)',
     automergeType: 'branch',
   },
-  automergeBranchMergeCommit: {
-    description:
-      'If automerging, perform a merge-commit on branch (no PR) - deprecated, use :automergeBranch instead',
-    automergeType: 'branch-merge-commit',
-  },
-  automergeBranchPush: {
-    description:
-      'If automerging, push the new commit directly to base branch (no PR) - deprecated, use :automergeBranch instead',
-    automergeType: 'branch-push',
-  },
   automergePr: {
     description: 'Raise a PR first before any automerging',
     automergeType: 'pr',
   },
   automergeRequireAllStatusChecks: {
     description: 'Require all status checks to pass before any automerging',
-    requiredStatusChecks: [],
+    ignoreTests: false,
   },
   skipStatusChecks: {
     description: 'Skip status checks and automerge right away',
-    requiredStatusChecks: null,
+    ignoreTests: true,
   },
   maintainLockFilesDisabled: {
     description:
@@ -334,7 +330,7 @@ export const presets: Record<string, Preset> = {
     },
   },
   pinDigestsDisabled: {
-    description: 'Disable pinning of docker dependency digests',
+    description: 'Disable pinning of Docker dependency digests',
     pinDigests: false,
   },
   maintainLockFilesWeekly: {
@@ -388,10 +384,10 @@ export const presets: Record<string, Preset> = {
     ],
   },
   automergeTypes: {
-    description: 'Update @types/* packages automatically if tests pass',
+    description: 'Update `@types/*` packages automatically if tests pass',
     packageRules: [
       {
-        packagePatterns: ['^@types/'],
+        matchPackagePrefixes: ['@types/'],
         automerge: true,
       },
     ],
@@ -400,7 +396,7 @@ export const presets: Record<string, Preset> = {
     description: 'Disable version pinning for <code>{{arg0}}</code>',
     packageRules: [
       {
-        packageNames: ['{{arg0}}'],
+        matchPackageNames: ['{{arg0}}'],
         rangeStrategy: 'replace',
       },
     ],
@@ -412,11 +408,12 @@ export const presets: Record<string, Preset> = {
     },
   },
   gitSignOff: {
-    description: 'Append git Signed-off-by signature to git commits.',
+    description:
+      'Append Git <code>Signed-off-by:</code> signature to Git commits.',
     commitBody: 'Signed-off-by: {{{gitAuthor}}}',
   },
   npm: {
-    description: 'Keep package.json npm dependencies updated',
+    description: 'Keep <code>package.json</code> npm dependencies updated',
     npm: {
       enabled: true,
     },
@@ -521,10 +518,10 @@ export const presets: Record<string, Preset> = {
   },
   widenPeerDependencies: {
     description:
-      'Always widen peerDependencies semver ranges when updating, instead of replacing',
+      'Always widen peerDependencies SemVer ranges when updating, instead of replacing',
     packageRules: [
       {
-        depTypeList: ['peerDependencies'],
+        matchDepTypes: ['peerDependencies'],
         rangeStrategy: 'widen',
       },
     ],
@@ -532,6 +529,10 @@ export const presets: Record<string, Preset> = {
   dependencyDashboard: {
     description: 'Enable Renovate Dependency Dashboard creation',
     dependencyDashboard: true,
+  },
+  disableDependencyDashboard: {
+    description: 'Disable Renovate Dependency Dashboard creation',
+    dependencyDashboard: false,
   },
   dependencyDashboardApproval: {
     description: 'Enable Renovate Dependency Dashboard approval workflow',
@@ -546,7 +547,7 @@ export const presets: Record<string, Preset> = {
       'Use semanticCommitType {{arg0}} for all package files matching path {{arg1}}',
     packageRules: [
       {
-        paths: ['{{arg0}}'],
+        matchPaths: ['{{arg0}}'],
         semanticCommitType: '{{arg1}}',
       },
     ],
@@ -556,32 +557,26 @@ export const presets: Record<string, Preset> = {
       'For package <code>{{arg0}}</code>, strictly follow release tag <code>{{arg1}}</code>',
     packageRules: [
       {
-        packageNames: ['{{arg0}}'],
+        matchPackageNames: ['{{arg0}}'],
         followTag: '{{arg1}}',
       },
     ],
   },
   githubComToken: {
-    description: 'Use provided token for github.com lookups',
+    description:
+      'Use provided token for github.com lookups. Do not configure this if you are already running on github.com',
     hostRules: [
       {
-        domainName: 'github.com',
+        matchHost: 'github.com',
         encrypted: {
           token: '{{arg0}}',
         },
       },
     ],
   },
-  base: {
-    description: 'deprecated alias for config:base',
-    extends: ['config:base'],
-  },
-  app: {
-    description: 'deprecated alias for config:js-app',
-    extends: ['config:js-app'],
-  },
-  library: {
-    description: 'deprecated alias for config:js-lib',
-    extends: ['config:js-lib'],
+  disablePrControls: {
+    description: 'Remove the checkbox controls from PRs',
+    prBodyTemplate:
+      '{{{header}}}{{{table}}}{{{notes}}}{{{changelogs}}}{{{configDescription}}}{{{footer}}}',
   },
 };

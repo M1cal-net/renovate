@@ -4,7 +4,8 @@ import {
   git,
   platform,
 } from '../../../../test/util';
-import { PLATFORM_TYPE_GITHUB } from '../../../constants/platforms';
+import { setGlobalConfig } from '../../../config/global';
+import { PlatformId } from '../../../constants';
 import * as cleanup from './prune';
 
 jest.mock('../../../util/git');
@@ -13,13 +14,16 @@ let config: RenovateConfig;
 beforeEach(() => {
   jest.resetAllMocks();
   config = getConfig();
-  config.platform = PLATFORM_TYPE_GITHUB;
+  config.platform = PlatformId.Github;
   config.errors = [];
   config.warnings = [];
 });
 
 describe('workers/repository/finalise/prune', () => {
   describe('pruneStaleBranches()', () => {
+    beforeEach(() => {
+      setGlobalConfig();
+    });
     it('returns if no branchList', async () => {
       delete config.branchList;
       await cleanup.pruneStaleBranches(config, config.branchList);
@@ -65,7 +69,7 @@ describe('workers/repository/finalise/prune', () => {
     });
     it('does nothing on dryRun', async () => {
       config.branchList = ['renovate/a', 'renovate/b'];
-      config.dryRun = true;
+      setGlobalConfig({ dryRun: true });
       git.getBranchList.mockReturnValueOnce(
         config.branchList.concat(['renovate/c'])
       );
@@ -105,7 +109,7 @@ describe('workers/repository/finalise/prune', () => {
     });
     it('skips comment if dry run', async () => {
       config.branchList = ['renovate/a', 'renovate/b'];
-      config.dryRun = true;
+      setGlobalConfig({ dryRun: true });
       git.getBranchList.mockReturnValueOnce(
         config.branchList.concat(['renovate/c'])
       );
@@ -120,7 +124,7 @@ describe('workers/repository/finalise/prune', () => {
     });
     it('dry run delete branch no PR', async () => {
       config.branchList = ['renovate/a', 'renovate/b'];
-      config.dryRun = true;
+      setGlobalConfig({ dryRun: true });
       git.getBranchList.mockReturnValueOnce(
         config.branchList.concat(['renovate/c'])
       );

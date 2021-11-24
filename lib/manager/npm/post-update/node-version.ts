@@ -1,13 +1,14 @@
 import { validRange } from 'semver';
 import { logger } from '../../../logger';
 import { getSiblingFileName, readLocalFile } from '../../../util/fs';
-import { PostUpdateConfig } from '../../common';
+import { regEx } from '../../../util/regex';
+import type { PostUpdateConfig } from '../../types';
 
 async function getNodeFile(filename: string): Promise<string> | null {
   try {
     const constraint = (await readLocalFile(filename, 'utf8'))
       .split('\n')[0]
-      .replace(/^v/, '');
+      .replace(regEx(/^v/), '');
     if (validRange(constraint)) {
       logger.debug(`Using node constraint "${constraint}" from ${filename}`);
       return constraint;

@@ -1,6 +1,6 @@
 import * as semver from 'semver';
 import { is as isStable } from 'semver-stable';
-import { VersioningApi } from '../common';
+import type { VersioningApi } from '../types';
 import { getNewValue } from './range';
 
 export const id = 'npm';
@@ -35,7 +35,7 @@ export const isVersion = (input: string): string => valid(input);
 
 const isSingleVersion = (constraint: string): string =>
   isVersion(constraint) ||
-  (constraint.startsWith('=') && isVersion(constraint.substring(1).trim()));
+  (constraint?.startsWith('=') && isVersion(constraint.substring(1).trim()));
 
 export const api: VersioningApi = {
   equals,

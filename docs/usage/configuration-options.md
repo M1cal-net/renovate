@@ -23,10 +23,19 @@ You can store your Renovate configuration file in one of the following locations
 Renovate always uses the config from the repository's default branch, even if that configuration specifies multiple `baseBranches`.
 Renovate does not read/override the config from within each base branch if present.
 
-Also, be sure to check out Renovate's [shareable config presets](/config-presets/) to save yourself from reinventing any wheels.
+Also, be sure to check out Renovate's [shareable config presets](./config-presets.md) to save yourself from reinventing any wheels.
+Shareable config presets only work with the JSON format.
 
 If you have any questions about the config options, or want to get help/feedback about a config, go to the [discussions tab in the Renovate repository](https://github.com/renovatebot/renovate/discussions) and start a new "config help" discussion.
 We will do our best to answer your question(s).
+
+A `subtype` in the configuration table specifies what type you're allowed to use within the main element.
+
+If a config option has a `parent` defined, it means it's only allowed to configure it within an object with the parent name, such as `packageRules` or `hostRules`.
+
+When an array or object configuration option is `mergeable`, it means that values inside it will be added to any existing object or array that existed with the same name.
+
+---
 
 ## addLabels
 
@@ -41,11 +50,11 @@ Consider this example:
   "labels": ["dependencies"],
   "packageRules": [
     {
-      "packagePatterns": ["eslint"],
+      "matchPackagePatterns": ["eslint"],
       "labels": ["linting"]
     },
     {
-      "depTypeList": ["optionalDependencies"],
+      "matchDepTypes": ["optionalDependencies"],
       "addLabels": ["optional"]
     }
   ]
@@ -61,7 +70,7 @@ With the above config:
 ## additionalBranchPrefix
 
 This value defaults to an empty string, and is typically not necessary.
-Some managers populate this field for historical reasons, for example we use `docker-` for Docker branches, so they may look like `renovate/docker-ubuntu-16.x`.
+Some managers previously populated this field, but they no longer do so by default.
 You normally don't need to configure this, but one example where it can be useful is combining with `parentDir` in monorepos to split PRs based on where the package definition is located, e.g.
 
 ```json
@@ -78,14 +87,14 @@ This makes it suitable for augmenting a preset or base list without displacing t
 ## aliases
 
 The `aliases` object is used for configuring registry aliases.
-Currently it is needed/supported for the `helm-requirements` manager only.
+Currently it is needed/supported for the `helm-requirements`, `helmv3` and `helmfile` managers only.
 
-`helm-requirements` includes this default alias:
+The above managers include this default alias:
 
 ```json
 {
   "aliases": {
-    "stable": "https://kubernetes-charts.storage.googleapis.com/"
+    "stable": "https://charts.helm.sh/stable"
   }
 }
 ```
@@ -123,7 +132,7 @@ You could configure Renovate to automerge all but major this way:
 {
   "packageRules": [
     {
-      "updateTypes": ["minor", "patch", "pin", "digest"],
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
       "automerge": true
     }
   ]
@@ -137,7 +146,7 @@ So for example you could elect to automerge all (passing) `devDependencies` only
 {
   "packageRules": [
     {
-      "depTypeList": ["devDependencies"],
+      "matchDepTypes": ["devDependencies"],
       "automerge": true
     }
   ]
@@ -145,6 +154,10 @@ So for example you could elect to automerge all (passing) `devDependencies` only
 ```
 
 Important: Renovate won't automerge on GitHub if a PR has a negative review outstanding.
+
+Note: on Azure there can be a delay between a PR being set as completed by Renovate, and Azure merging the PR / finishing its tasks.
+Renovate will try to delay until Azure is in the expected state, however if it takes too long it will continue.
+In some cases this can result in a dependency not being merged, and a fresh PR being created for the dependency.
 
 ## automergeComment
 
@@ -160,14 +173,35 @@ Example use:
 }
 ```
 
+## automergeStrategy
+
+This setting is only applicable if you opt-in by configuring `automerge` to `true` and `automergeType` to `pr` for any of your dependencies.
+
+The automerge strategy defaults to `auto`, in which Renovate will make its best guess as to how to merge pull requests.
+This generally results in Renovate respecting the strategy configured in the platform itself for the repository if possible.
+Acceptable values are:
+
+- `auto`, in which the choice is left to Renovate
+- `fast-forward`, which generally involves no new commits in the resultant tree, but "fast-forwarding" the main branch reference
+- `merge-commit`, which generally involves synthesizing a new merge commit
+- `rebase`, which generally involves rewriting history as part of the merge — but usually retaining the individual commits
+- `squash`, which generally involves flattening the commits that are being merged into a single new commit
+
+Not all platforms support all pull request merge strategies.
+In cases where a merge strategy is not supported by the platform, Renovate will hold off on merging instead of silently merging in a way you didn't wish for.
+
+The only platform that supports `automergeStrategy` is Bitbucket Cloud.
+
 ## automergeType
 
 This setting is only applicable if you opt in to configure `automerge` to `true` for any of your dependencies.
 
 Automerging defaults to using Pull Requests (`automergeType="pr"`).
-In that case Renovate first creates a branch, then an associated Pull Request, and then automerges the first time it detects that the Pull Requests status checks are "green".
+In that case Renovate first creates a branch and associated Pull Request, and then automerges the PR on a subsequent run once it detects the PR's status checks are "green".
+If by the next run the PR is already behind the base branch it will be automatically rebased, because Renovate only automerges branches which are up-to-date and green.
+If Renovate is scheduled for hourly runs on the repository but commits are made every 15 minutes to the main branch, then an automerge like this will keep getting deferred with every rebase.
 
-Note: if you have no tests but still want Renovate to automerge, you need to add `"requiredStatusChecks": null` to your configuration.
+Note: if you have no tests but still want Renovate to automerge, you need to add `"ignoreTests": true` to your configuration.
 
 If you prefer that Renovate more silently automerge _without_ Pull Requests at all, you can configure `"automergeType": "branch"`. In this case Renovate will:
 
@@ -179,9 +213,9 @@ If you prefer that Renovate more silently automerge _without_ Pull Requests at a
 The final value for `automergeType` is `"pr-comment"`, intended only for users who already have a "merge bot" such as [bors-ng](https://github.com/bors-ng/bors-ng) and want Renovate to _not_ actually automerge by itself and instead tell `bors-ng` to merge for it, by using a comment in the PR.
 If you're not already using `bors-ng` or similar, don't worry about this option.
 
-## azureAutoComplete
+## azureAutoApprove
 
-Setting this to `true` will configure PRs in Azure DevOps to auto-complete after all (if any) branch policies have been met.
+Setting this to `true` will automatically approve the PRs in Azure DevOps.
 
 You can also configure this using `packageRules` if you want to use it selectively (e.g. per-package).
 
@@ -192,12 +226,12 @@ Creating a work item in Azure DevOps is beyond the scope of Renovate, but Renova
 
 ## baseBranches
 
-By default, Renovate will detect and process only the repository's default branch, e.g. `master`.
+By default, Renovate will detect and process only the repository's default branch.
 For most projects, this is the expected approach.
 However, Renovate also allows users to explicitly configure `baseBranches`, e.g. for use cases such as:
 
 - You wish Renovate to process only a non-default branch, e.g. `dev`: `"baseBranches": ["dev"]`
-- You have multiple release streams you need Renovate to keep up to date, e.g. in branches `master` and `next`: `"baseBranches": ["master", "next"]`
+- You have multiple release streams you need Renovate to keep up to date, e.g. in branches `main` and `next`: `"baseBranches": ["main", "next"]`
 
 It's possible to add this setting into the `renovate.json` file as part of the "Configure Renovate" onboarding PR.
 If so then Renovate will reflect this setting in its description and use package file contents from the custom base branch(es) instead of default.
@@ -205,6 +239,33 @@ If so then Renovate will reflect this setting in its description and use package
 ## bbUseDefaultReviewers
 
 Configuring this to `true` means that Renovate will detect and apply the default reviewers rules to PRs (Bitbucket only).
+
+## branchConcurrentLimit
+
+By default, Renovate won't enforce any concurrent branch limits.
+The `config:base` preset that many extend from limits the amount of concurrent branches to 20, but in most cases we would recommend lower values such as 5 or 10.
+
+If you want the same limit for both concurrent branches and concurrent PRs, then just set a value for `prConcurrentLimit` and it will be reused for branch calculations too.
+However, if you want to allow more concurrent branches than concurrent PRs, you can configure both values (e.g. `branchConcurrentLimit=5` and `prConcurrentLimit=3`).
+
+This limit is enforced on a per-repository basis.
+
+Example config:
+
+```json
+{
+  "branchConcurrentLimit": 3
+}
+```
+
+Warning: Leaving PRs/branches as unlimited or as a high number increases the time it takes for Renovate to process a repository.
+If you find that Renovate is too slow when rebasing out-of-date branches, decrease the `branchConcurrentLimit`.
+
+If you have too many concurrent branches which rebase themselves each run, Renovate can take a lot of time to rebase.
+Solutions:
+
+- Decrease the concurrent branch limit (note: this won't go and delete any existing, so won't have an effect until you either merge or close existing ones manually)
+- Remove automerge and/or automatic rebasing (set `rebaseWhen` to `conflicted`). However if you have branch protection saying PRs must be up to date then it's not ideal to remove automatic rebasing
 
 ## branchName
 
@@ -225,7 +286,7 @@ Or if you wish to avoid forward slashes in branch names then you could use `reno
 e.g. instead of `renovate/{{parentDir}}-`, configure the template part in `additionalBranchPrefix`, like `"additionalBranchPrefix": "{{parentDir}}-"`.
 
 Note that this setting does not change the default _onboarding_ branch name, i.e. `renovate/configure`.
-If you wish to change that too, you need to also configure the field `onboardingBranch` in your admin bot config.
+If you wish to change that too, you need to also configure the field `onboardingBranch` in your global bot config.
 
 ## branchTopic
 
@@ -234,7 +295,7 @@ This is an advance field and it's recommend you seek a config review before appl
 
 ## bumpVersion
 
-Currently this setting supports `helmv3` and `npm` only, so raise a feature request if you have a use for it with other package managers.
+Currently this setting supports `helmv3`, `npm` and `sbt` only, so raise a feature request if you have a use for it with other package managers.
 Its purpose is if you want Renovate to update the `version` field within your file's `package.json` any time it updates dependencies within.
 Usually this is for automatic release purposes, so that you don't need to add another step after Renovate before you can release a new version.
 
@@ -245,7 +306,13 @@ For `npm` only you can also configure this field to `"mirror:x"` where `x` is th
 Doing so means that the `package.json` `version` field will mirror whatever the version is that `x` depended on.
 Make sure that version is a pinned version of course, as otherwise it won't be valid.
 
+For `sbt` note that Renovate will update the version string only for packages that have the version string in their project's `built.sbt` file.
+
 ## cloneSubmodules
+
+Enabling this option will mean that any detected Git submodules will be cloned at time of repository clone.
+
+Important: private submodules aren't supported by Renovate, unless the underlying `ssh` layer already has the appropriate permissions.
 
 ## commitBody
 
@@ -294,6 +361,22 @@ Usually left empty except for internal use (multiple base branches, and vulnerab
 This is used to alter `commitMessage` and `prTitle` without needing to copy/paste the whole string.
 The "topic" is usually refers to the dependency being updated, e.g. `"dependency react"`.
 
+## composerIgnorePlatformReqs
+
+By default, Renovate will run Composer with `--ignore-platform-reqs` as the PHP platform used by Renovate most probably won't match with the required PHP environment of your project as configured in your `composer.json` file.
+However, this also means that all platform constraints (including PHP version) will be ignored by default, which can result in updated dependencies that are not compatible with your platform.
+
+To solve this, you should configure explicit ignored platform requirements (for example `ext-zip`) by setting them separately in this array.
+Each item will be added to the Composer command with `--ignore-platform-req`, resulting in it being ignored during its invocation.
+Note that this requires your project to use Composer V2, as V1 doesn't support excluding single platform requirements.
+The used PHP version will be guessed automatically from your `composer.json` definition, so `php` should not be added as explicit dependency.
+
+If an empty array is configured, Renovate uses its default behaviour.
+
+Set to `null` (not recommended) to fully omit `--ignore-platform-reqs/--ignore-platform-req` during Composer invocation.
+This requires the Renovate image to be fully compatible with your Composer platform requirements in order for the Composer invocation to succeed, otherwise Renovate will fail to create the updated lock file.
+The Composer output should inform you about the reasons the update failed.
+
 ## configWarningReuseIssue
 
 Renovate's default behavior is to reuse/reopen a single Config Warning issue in each repository so as to keep the "noise" down.
@@ -304,9 +387,10 @@ Configure this option to `false` if you prefer Renovate to open a new issue when
 
 Constraints are used in package managers which use third party tools to update "artifacts" like lock files or checksum files.
 Typically, the constraint is detected automatically by Renovate from files within the repository and there is no need to manually configure it.
+Manually specifying constraints is supported for `ruby`, `bundler`, `composer`, `go`, `npm`, `yarn`, `pnpm`, `python`, `pipenv`, and `poetry`.
 
 Constraints are also used to manually restrict which _datasource_ versions are possible to upgrade to based on their language support.
-For now this only supports `python`, other compatibility restrictions will be added in the future.
+For now this datasource constraint feature only supports `python`, other compatibility restrictions will be added in the future.
 
 ```json
 {
@@ -330,7 +414,23 @@ If you need to _override_ constraints that Renovate detects from the repository,
 
 Note: make sure not to mix this up with the term `compatibility`, which Renovate uses in the context of version releases, e.g. if a Docker image is `node:12.16.0-alpine` then the `-alpine` suffix represents `compatibility`.
 
+## deepExtract
+
+If configured to `true`, then dependency extraction will be done using the relevant package manager instead of JavaScript-based parsing.
+
+This option applies only to the `gradle` manager.
+
 ## dependencyDashboard
+
+Starting from version `v26.0.0` the "Dependency Dashboard" is enabled by default as part of the commonly-used `config:base` preset.
+
+To disable the Dependency Dashboard, add the preset `:disableDependencyDashboard` or set `dependencyDashboard` to `false`.
+
+```json
+{
+  "extends": ["config:base", ":disableDependencyDashboard"]
+}
+```
 
 Configuring `dependencyDashboard` to `true` will lead to the creation of a "Dependency Dashboard" issue within the repository.
 This issue contains a list of all PRs pending, open, closed (unmerged) or in error.
@@ -348,13 +448,50 @@ The Dependency Dashboard therefore provides visibility as well as additional con
 
 ## dependencyDashboardApproval
 
-Setting `dependencyDashboardApproval` to `true` means that Renovate will no longer create branches/PRs automatically but instead wait for manual approval from within the Dependency Dashboard.
+This feature allows you to use Renovate's Dependency Dashboard to force approval of updates before they are created.
 
-In this case, the Dependency Dashboard _does_ change the flow of Renovate, because PRs will stop appearing until you approve them within the issue.
-Instead of enabling this repository-wide, you may instead with to use package rules to enable it selectively, e.g. for major updates only, or for certain package managers, etc.
-i.e. it is possible to require approval for only certain types of updates only.
+By setting `dependencyDashboardApproval` to `true` in config (including within `packageRules`), you can tell Renovate to wait for your approval from the Dependency Dashboard before creating a branch/PR.
+You can approve a pending PR by ticking the checkbox in the Dependency Dashboard issue.
 
-Note: Enabling Dependency Dashboard Approval implicitly enables `dependencyDashboard` too, so it is not necessary to configure both to `true`.
+Note: When you set `dependencyDashboardApproval` to `true` the Dependency Dashboard issue will be created automatically, you do not need to turn on `dependencyDashboard` explicitly.
+
+You can configure Renovate to wait for approval for:
+
+- all package upgrades
+- major, minor, patch level upgrades
+- specific package upgrades
+- upgrades coming from specific package managers
+
+If you want to approve _all_ upgrades, set `dependencyDashboardApproval` to `true`:
+
+```json
+{
+  "dependencyDashboardApproval": true
+}
+```
+
+If you want to require approval for _major_ updates, set `dependencyDashboardApproval` to `true` within a `major` object:
+
+```json
+{
+  "major": {
+    "dependencyDashboardApproval": true
+  }
+}
+```
+
+If you want to approve _specific_ packages, set `dependencyDashboardApproval` to `true` within a `packageRules` entry where you have defined a specific package or pattern.
+
+```json
+{
+  "packageRules": [
+    {
+      "matchPackagePatterns": ["^@package-name"],
+      "dependencyDashboardApproval": true
+    }
+  ]
+}
+```
 
 ## dependencyDashboardAutoclose
 
@@ -363,6 +500,11 @@ You can configure this to `true` if you prefer Renovate to close an existing Dep
 ## dependencyDashboardFooter
 
 ## dependencyDashboardHeader
+
+## dependencyDashboardLabels
+
+The labels only get updated when the Dependency Dashboard issue updates its content and/or title.
+It is pointless to edit the labels, as Renovate bot restores the labels on each run.
 
 ## dependencyDashboardTitle
 
@@ -375,7 +517,7 @@ They are then collated as part of the onboarding description.
 
 ## digest
 
-Add to this object if you wish to define rules that apply only to PRs that update Docker digests.
+Add to this object if you wish to define rules that apply only to PRs that update digests.
 
 ## docker
 
@@ -386,7 +528,7 @@ If instead you mean to apply settings to any package manager that updates using 
 {
   "packageRules": [
     {
-      "datasources": ["docker"],
+      "matchDatasources": ["docker"],
       "labels": ["docker-update"]
     }
   ]
@@ -428,7 +570,7 @@ To disable Renovate for all `eslint` packages, you can configure a package rule 
 {
   "packageRules": [
     {
-      "packagePatterns": ["^eslint"],
+      "matchPackagePatterns": ["^eslint"],
       "enabled": false
     }
   ]
@@ -441,8 +583,8 @@ To disable Renovate for npm `devDependencies` but keep it for `dependencies` you
 {
   "packageRules": [
     {
-      "managers": ["npm"],
-      "depTypeList": ["devDependencies"],
+      "matchManagers": ["npm"],
+      "matchDepTypes": ["devDependencies"],
       "enabled": false
     }
   ]
@@ -465,7 +607,10 @@ For the full list of available managers, see the [Supported Managers](https://do
 
 ## encrypted
 
-See [Private npm module support](https://docs.renovatebot.com/private-modules) for details on how this is used to encrypt npm tokens.
+See [Private module support](https://docs.renovatebot.com/getting-started/private-packages) for details on how this is used to encrypt npm tokens.
+
+Note: encrypted secrets must have at least an org/group scope, and optionally a repository scope.
+This means that Renovate will check if a secret's scope matches the current repository before applying it, and warn/discard if there is a mismatch.
 
 ## excludeCommitPaths
 
@@ -498,7 +643,7 @@ For example, to extract only the major.minor precision from a GitHub release, th
 {
   "packageRules": [
     {
-      "packageNames": ["foo"],
+      "matchPackageNames": ["foo"],
       "extractVersion": "^(?<version>v\\d+\\.\\d+)"
     }
   ]
@@ -513,7 +658,7 @@ Alternatively, to strip a `release-` prefix:
 {
   "packageRules": [
     {
-      "packageNames": ["bar"],
+      "matchPackageNames": ["bar"],
       "extractVersion": "^release-(?<version>.*)$"
     }
   ]
@@ -527,7 +672,7 @@ A similar one could strip leading `v` prefixes:
 {
   "packageRules": [
     {
-      "packageNames": ["baz"],
+      "matchPackageNames": ["baz"],
       "extractVersion": "^v(?<version>.*)$"
     }
   ]
@@ -540,7 +685,7 @@ Configure this to `false` if you want to disable release notes fetching
 
 ## fileMatch
 
-`fileMatch` is used by Renovate to know which files in a repository to parse and extract, and it is possible to override defaults values to customize for your project's needs.
+`fileMatch` is used by Renovate to know which files in a repository to parse and extract, and it is possible to override the default values to customize for your project's needs.
 
 Sometimes file matches are really simple - for example with Go Modules Renovate looks for any `go.mod` file, and you probably don't need to change that default.
 
@@ -563,6 +708,12 @@ Because `fileMatch` is mergeable, you don't need to duplicate the defaults and c
 If you configure `fileMatch` then it must be within a manager object (e.g. `dockerfile` in the above example).
 The full list of supported managers can be found [here](https://docs.renovatebot.com/modules/manager/).
 
+## filterUnavailableUsers
+
+When this option is enabled PRs are not assigned to users that are unavailable.
+This option only works on platforms that support the concept of user availability.
+For now, you can only use this option on the GitLab platform.
+
 ## followTag
 
 Caution: advanced functionality. Only use it if you're sure you know what you're doing.
@@ -575,14 +726,45 @@ If configured, Renovate bypasses its normal major/minor/patch upgrade logic and 
 Beware that Renovate follows tags strictly.
 For example, if you are following a tag like `next` and then that stream is released as `stable` and `next` is no longer being updated then that means your dependencies also won't be getting updated.
 
-## gitLabAutomerge
+## gitAuthor
 
-Caution (fixed in GitLab >= 12.7): when this option is enabled it is possible due to a bug in GitLab that MRs with failing pipelines might still get merged.
-This is caused by a race condition in GitLab's Merge Request API - [read the corresponding issue](https://gitlab.com/gitlab-org/gitlab/issues/26293) for details.
+You can customize the Git author that's used whenever Renovate creates a commit.
+The `gitAuthor` option accepts a RFC5322-compliant string.
+
+**Note** We strongly recommend that the Git author email you use is unique to Renovate.
+Otherwise, if another bot or human shares the same email and pushes to one of Renovate's branches then Renovate will mistake the branch as unmodified and potentially force push over the changes.
+
+## gitIgnoredAuthors
+
+Specify commit authors ignored by Renovate.
+
+By default, Renovate will treat any PR as modified if another git author has added to the branch.
+When a PR is considered modified, Renovate won't perform any further commits such as if it's conflicted or needs a version update.
+If you have other bots which commit on top of Renovate PRs, and don't want Renovate to treat these PRs as modified, then add the other git author(s) to `gitIgnoredAuthors`.
+
+Example:
+
+```json
+{
+  "gitIgnoredAuthors": ["some-bot@example.org"]
+}
+```
+
+## gitLabIgnoreApprovals
+
+Ignore the default project level approval(s), so that Renovate bot can automerge its merge requests, without needing approval(s).
+Under the hood, it creates a MR-level approval rule where `approvals_required` is set to `0`.
+This option works only when `automerge=true`, `automergeType=pr` or `automergeType=branch` and `platformAutomerge=true`.
+Also, approval rules overriding should not be [prevented in GitLab settings](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/settings.html#prevent-editing-approval-rules-in-merge-requests).
 
 ## golang
 
 Configuration added here applies for all Go-related updates, however currently the only supported package manager for Go is the native Go Modules (the `gomod` manager).
+
+For self-hosted users, `GOPROXY`, `GONOPROXY` and `GOPRIVATE` environment variables are supported ([reference](https://golang.org/ref/mod#module-proxy)).
+
+Usage of `direct` will fallback to the Renovate-native release fetching mechanism.
+Also we support the `off` keyword which will stop any fetching immediately.
 
 ## group
 
@@ -606,8 +788,8 @@ For example, to group all non-major devDependencies updates together into a sing
 {
   "packageRules": [
     {
-      "depTypeList": ["devDependencies"],
-      "updateTypes": ["patch", "minor"],
+      "matchDepTypes": ["devDependencies"],
+      "matchUpdateTypes": ["patch", "minor"],
       "groupName": "devDependencies (non-major)"
     }
   ]
@@ -624,8 +806,8 @@ If you wished to override this then you could configure like this:
 {
   "packageRules": [
     {
-      "depTypeList": ["devDependencies"],
-      "updateTypes": ["patch", "minor"],
+      "matchDepTypes": ["devDependencies"],
+      "matchUpdateTypes": ["patch", "minor"],
       "groupName": "devDependencies (non-major)",
       "groupSlug": "dev-dependencies"
     }
@@ -637,13 +819,19 @@ As a result of the above, the branchName would be `renovate/dev-dependencies` in
 
 Note: you shouldn't usually need to configure this unless you really care about your branch names.
 
+## hashedBranchLength
+
+Some code hosting systems have restrictions on the branch name lengths, this option lets you get around these restrictions.
+You can set the `hashedBranchLength` option to a number of characters that works for your system and then Renovate will generate branch names with the appropriate length by hashing `additionalBranchPrefix` and `branchTopic`, and then truncating the hash so that the full branch name (including `branchPrefix`) has the right number of characters.
+
+Example: If you have set `branchPrefix: "deps-"` and `hashedBranchLength: 12` it will result in a branch name like `deps-5bf36ec` instead of the traditional pretty branch name like `deps-react-17.x`.
+
 ## hostRules
 
-Currently the purpose of `hostRules` is to configure credentials for host authentication.
+The primary purpose of `hostRules` is to configure credentials for host authentication.
 You tell Renovate how to match against the host you need authenticated, and then you also tell it which credentials to use.
 
-The lookup keys for a hostRule are: `hostType`, `domainName`, `hostName`, and `baseUrl`.
-All are optional, but you can only have one of the last three per rule.
+The lookup keys for `hostRules` are: `hostType` and `matchHost`, both of which are optional.
 
 Supported credential fields are `token`, `username`, `password`, `timeout`, `enabled` and `insecureRegistry`.
 
@@ -653,7 +841,7 @@ Example for configuring `docker` auth:
 {
   "hostRules": [
     {
-      "domainName": "docker.io",
+      "matchHost": "docker.io",
       "username": "<some-username>",
       "password": "<some-password>"
     }
@@ -667,7 +855,7 @@ To disable requests to a particular host, you can configure a rule like:
 {
   "hostRules": [
     {
-      "hostName": "registry.npmjs.org",
+      "matchHost": "registry.npmjs.org",
       "enabled": false
     }
   ]
@@ -739,7 +927,7 @@ To abort Renovate for errors for a specific `docker` host:
 {
   "hostRules": [
     {
-      "hostName": "docker.company.com",
+      "matchHost": "docker.company.com",
       "abortOnError": true
     }
   ]
@@ -748,12 +936,41 @@ To abort Renovate for errors for a specific `docker` host:
 
 When this field is enabled, Renovate will abort its run if it encounters either (a) any low-level http error (e.g. `ETIMEDOUT`) or (b) receives a response _not_ matching any of the configured `abortIgnoreStatusCodes` (e.g. `500 Internal Error`);
 
-### baseUrl
+### authType
 
-Use this instead of `domainName` or `hostName` if you need a rule to apply to a specific path on a host.
-For example, `"baseUrl": "https://api.github.com"` is equivalent to `"hostName": "api.github.com"` but `"baseUrl": "https://api.github.com/google/"` is not.
+This can be used with `token` to create a custom http `authorization` header.
 
-Renovate does not do a "longest match" algorithm to pick between multiple matching `baseUrl` values in different rules, so put the longer `baseUrl` rule _after_ the shorter one in your `hostRules`.
+An example for npm basic auth with token:
+
+```json
+{
+  "hostRules": [
+    {
+      "matchHost": "npm.custom.org",
+      "token": "<some-token>",
+      "authType": "Basic"
+    }
+  ]
+}
+```
+
+This will generate the following header: `authorization: Basic <some-token>`.
+
+To use a bare token in the authorization header (required by e.g. Hex) - use the `authType` "Token-Only":
+
+```json
+{
+  "hostRules": [
+    {
+      "matchHost": "https://hex.pm/api/repos/private_repo/",
+      "token": "<some-token>",
+      "authType": "Token-Only"
+    }
+  ]
+}
+```
+
+This will generate the header `authorization: <some-token>`.
 
 ### concurrentRequestLimit
 
@@ -767,29 +984,22 @@ Example config:
 {
   "hostRules": [
     {
-      "hostName": "github.com",
+      "matchHost": "github.com",
       "concurrentRequestLimit": 2
     }
   ]
 }
 ```
 
-### domainName
-
-If you have any uncertainty about exactly which hosts a service uses, then it can be more reliable to use `domainName` instead of `hostName` or `baseUrl`.
-e.g. configure `"hostName": "docker.io"` to cover both `index.docker.io` and `auth.docker.io` and any other host that's in use.
-
 ### enableHttp2
 
 Enable got [http2](https://github.com/sindresorhus/got/blob/v11.5.2/readme.md#http2) support.
 
-### hostName
-
 ### hostType
 
 `hostType` is another way to filter rules and can be either a platform such as `github` and `bitbucket-server`, or it can be a datasource such as `docker` and `rubygems`.
-You usually don't need to configure it in a host rule if you have already configured `domainName`, `hostName` or `baseUrl` and only one host type is in use for those, as is usually the case.
-`hostType` can help for cases like an enterprise registry that serves multiple package types and has different authentication for each, although it's often the case that multiple `baseUrl` rules could achieve the same thing.
+You usually don't need to configure it in a host rule if you have already configured `matchHost` and only one host type is in use for those, as is usually the case.
+`hostType` can help for cases like an enterprise registry that serves multiple package types and has different authentication for each, although it's often the case that multiple `matchHost` rules could achieve the same thing.
 
 ### insecureRegistry
 
@@ -804,12 +1014,19 @@ Example:
 {
   "hostRules": [
     {
-      "hostName": "reg.insecure.com",
+      "matchHost": "reg.insecure.com",
       "insecureRegistry": true
     }
   ]
 }
 ```
+
+### matchHost
+
+This can be a base URL (e.g. `https://api.github.com`) or a hostname like `github.com` or `api.github.com`.
+If the value starts with `http(s)` then it will only match against URLs which start with the full base URL.
+Otherwise, it will be matched by checking if the URL's hostname matches the `matchHost` directly or ends with it.
+When checking the end of the hostname, a single dot is prefixed to the value of `matchHost`, if one is not already present, to ensure it can only match against whole domain segments.
 
 ### timeout
 
@@ -851,24 +1068,27 @@ The above is the same as if you wrote this package rule:
 {
   "packageRules": [
     {
-      "packageNames": ["eslint", "eslint-config-base"],
+      "matchPackageNames": ["eslint", "eslint-config-base"],
       "enabled": false
     }
   ]
 }
 ```
 
-## ignoreNpmrcFile
-
-By default, Renovate will look for and use any `.npmrc` file it finds in a repository.
-Additionally, it will be read in by `npm` or `yarn` at the time of lock file generation.
-Sometimes this causes problems, for example if the file contains placeholder values, so you can configure this to `true` and Renovate will ignore any `.npmrc` files it finds and temporarily remove the file before running `npm install` or `yarn install`.
-Renovate will try to configure this to `true` also if you have configured any `npmrc` string within your config file.
-
 ## ignorePaths
 
-Using this setting, you can selectively ignore package files that you don't want Renovate autodiscovering.
-For instance if your repository has an "examples" directory of many package.json files that you don't want to be kept up to date.
+Renovate will extract dependencies from every file it finds in a repository, unless that file is explicitly ignored.
+With this setting you can selectively ignore package files that would normally be "autodiscovered" and updated by Renovate.
+
+For instance if you have a project with an `"examples/"` directory you wish to ignore:
+
+```json
+{
+  "ignorePaths": ["**/examples/**"]
+}
+```
+
+Useful to know: Renovate's default ignore is `node_modules` and `bower_components` only, however if you are extending the popular `config:base` preset then it adds ignore patterns for `vendor`, `examples`, `test(s)` and `fixtures` directories too.
 
 ## ignorePrAuthor
 
@@ -895,6 +1115,14 @@ It would take the entire `"config:base"` preset - which contains a lot of sub-pr
 
 Applicable for npm and Composer only for now. Set this to `true` if running scripts causes problems.
 
+## ignoreTests
+
+Currently Renovate's default behavior is to only automerge if every status check has succeeded.
+
+Setting this option to `true` means that Renovate will ignore _all_ status checks.
+You can set this if you don't have any status checks but still want Renovate to automerge PRs.
+Beware: configuring Renovate to automerge without any tests can lead to broken builds on your base branch, please think again before enabling this!
+
 ## ignoreUnstable
 
 By default, Renovate won't update any package versions to unstable versions (e.g. `4.0.0-rc3`) unless the current version has the same `major.minor.patch` and was _already_ unstable (e.g. it was already on `4.0.0-rc2`).
@@ -918,9 +1146,21 @@ If you wish for Renovate to process only select paths in the repository, use `in
 Alternatively, if you need to just _exclude_ certain paths in the repository then consider `ignorePaths` instead.
 If you are more interested in including only certain package managers (e.g. `npm`), then consider `enabledManagers` instead.
 
+## internalChecksFilter
+
+This setting determines whether Renovate controls when and how filtering of internal checks are performed, particularly when multiple versions of the same update type are available.
+Currently this applies to the `stabilityDays` check only.
+
+- `none`: No filtering will be performed, and the highest release will be used regardless of whether it's pending or not
+- `strict`: All pending releases will be filtered. PRs will be skipped unless a non-pending version is available
+- `flexible`: Similar to strict, but in the case where all versions are pending then a PR will be created with the highest pending version
+
+The `flexible` mode can result in "flapping" of Pull Requests, where e.g. a pending PR with version `1.0.3` is first released but then downgraded to `1.0.2` once it passes `stabilityDays`.
+We recommend that you use the `strict` mode, and enable the `dependencyDashboard` so that you have visibility into suppressed PRs.
+
 ## java
 
-Use this configuration option for shared config across all java projects (Gradle and Maven).
+Use this configuration option for shared config across all Java projects (Gradle and Maven).
 
 ## js
 
@@ -940,7 +1180,7 @@ Consider this example:
   "labels": ["dependencies"],
   "packageRules": [
     {
-      "packagePatterns": ["eslint"],
+      "matchPackagePatterns": ["eslint"],
       "labels": ["linting"]
     }
   ]
@@ -984,12 +1224,21 @@ Check out our [Node.js documentation](https://docs.renovatebot.com/node) for a c
 
 ## npmToken
 
-See [Private npm module support](https://docs.renovatebot.com/private-modules) for details on how this is used.
+See [Private npm module support](https://docs.renovatebot.com/getting-started/private-packages) for details on how this is used.
 Typically you would encrypt it and put it inside the `encrypted` object.
 
 ## npmrc
 
-See [Private npm module support](https://docs.renovatebot.com/private-modules) for details on how this is used.
+See [Private npm module support](https://docs.renovatebot.com/getting-started/private-packages) for details on how this is used.
+
+## npmrcMerge
+
+This option exists to provide flexibility about whether `npmrc` strings in config should override `.npmrc` files in the repo, or be merged with them.
+In some situations you need the ability to force override `.npmrc` contents in a repo (`npmrcMerge=false`) while in others you might want to simply supplement the settings already in the `.npmrc` (`npmrcMerge=true`).
+A use case for the latter is if you are a Renovate bot admin and wish to provide a default token for `npmjs.org` without removing any other `.npmrc` settings which individual repositories have configured (such as scopes/registries).
+
+If `false` (default), it means that defining `config.npmrc` will result in any `.npmrc` file in the repo being overridden and therefore its values ignored.
+If configured to `true`, it means that any `.npmrc` file in the repo will have `config.npmrc` prepended to it before running `npm`.
 
 ## packageRules
 
@@ -1001,14 +1250,14 @@ Here is an example if you want to group together all packages starting with `esl
 {
   "packageRules": [
     {
-      "packagePatterns": ["^eslint"],
+      "matchPackagePatterns": ["^eslint"],
       "groupName": "eslint packages"
     }
   ]
 }
 ```
 
-Note how the above uses `packagePatterns` with a regex value.
+Note how the above uses `matchPackagePatterns` with a regex value.
 
 Here is an example where you might want to limit the "noisy" package `aws-sdk` to updates just once per week:
 
@@ -1016,26 +1265,26 @@ Here is an example where you might want to limit the "noisy" package `aws-sdk` t
 {
   "packageRules": [
     {
-      "packageNames": ["aws-sdk"],
+      "matchPackageNames": ["aws-sdk"],
       "schedule": ["after 9pm on sunday"]
     }
   ]
 }
 ```
 
-For Maven dependencies, the package name is `<groupId:artefactId>`, eg `"packageNames": ["com.thoughtworks.xstream:xstream"]`
+For Maven dependencies, the package name is `<groupId:artefactId>`, eg `"matchPackageNames": ["com.thoughtworks.xstream:xstream"]`
 
-Note how the above uses `packageNames` instead of `packagePatterns` because it is an exact match package name.
-This is the equivalent of defining `"packagePatterns": ["^aws\-sdk$"]` and hence much simpler.
-However you can mix together both `packageNames` and `packagePatterns` in the same package rule and the rule will be applied if _either_ match.
+Note how the above uses `matchPackageNames` instead of `matchPackagePatterns` because it is an exact match package name.
+This is the equivalent of defining `"matchPackagePatterns": ["^aws\-sdk$"]` and hence much simpler.
+However you can mix together both `matchPackageNames` and `matchPackagePatterns` in the same package rule and the rule will be applied if _either_ match.
 Example:
 
 ```json
 {
   "packageRules": [
     {
-      "packageNames": ["neutrino"],
-      "packagePatterns": ["^@neutrino/"],
+      "matchPackageNames": ["neutrino"],
+      "matchPackagePatterns": ["^@neutrino/"],
       "groupName": "neutrino monorepo"
     }
   ]
@@ -1051,21 +1300,21 @@ For example, if you have an `examples` directory and you want all updates to tho
 {
   "packageRules": [
     {
-      "paths": ["examples/**"],
+      "matchPaths": ["examples/**"],
       "extends": [":semanticCommitTypeAll(chore)"]
     }
   ]
 }
 ```
 
-If you wish to limit renovate to apply configuration rules to certain files in the root repository directory, you have to use `paths` with either a partial string match or a minimatch pattern.
+If you wish to limit Renovate to apply configuration rules to certain files in the root repository directory, you have to use `matchPaths` with either a partial string match or a minimatch pattern.
 For example you have multiple `package.json` and want to use `dependencyDashboardApproval` only on the root `package.json`:
 
 ```json
 {
   "packageRules": [
     {
-      "paths": ["+(package.json)"],
+      "matchPaths": ["+(package.json)"],
       "dependencyDashboardApproval": true
     }
   ]
@@ -1084,7 +1333,7 @@ For example, if you wish to upgrade to Angular v1.5 but not to `angular` v1.6 or
 {
   "packageRules": [
     {
-      "packageNames": ["angular"],
+      "matchPackageNames": ["angular"],
       "allowedVersions": "<=1.5"
     }
   ]
@@ -1094,13 +1343,13 @@ For example, if you wish to upgrade to Angular v1.5 but not to `angular` v1.6 or
 The valid syntax for this will be calculated at runtime because it depends on the versioning scheme, which is itself dynamic.
 
 This field also supports Regular Expressions if they begin and end with `/`.
-For example, the following will enforce that only 3 or 4-section versions are supported, without any prefixes:
+For example, the following will enforce that only 3 or 4-part versions are supported, without any prefixes:
 
 ```json
 {
   "packageRules": [
     {
-      "packageNames": ["com.thoughtworks.xstream:xstream"],
+      "matchPackageNames": ["com.thoughtworks.xstream:xstream"],
       "allowedVersions": "/^[0-9]+\\.[0-9]+\\.[0-9]+(\\.[0-9]+)?$/"
     }
   ]
@@ -1114,14 +1363,14 @@ Use the syntax `!/ /` like the following:
 {
   "packageRules": [
     {
-      "packageNames": ["chalk"],
+      "matchPackageNames": ["chalk"],
       "allowedVersions": "!/java$/"
     }
   ]
 }
 ```
 
-### depTypeList
+### matchDepTypes
 
 Use this field if you want to limit a `packageRule` to certain `depType` values.
 Invalid if used outside of a `packageRule`.
@@ -1132,13 +1381,13 @@ Invalid if used outside of a `packageRule`.
 Use `ignoreDeps` instead if all you want to do is have a list of package names for Renovate to ignore.
 
 Use `excludePackageNames` if you want to have one or more exact name matches excluded in your package rule.
-See also `packageNames`.
+See also `matchPackageNames`.
 
 ```json
 {
   "packageRules": [
     {
-      "packagePatterns": ["^eslint"],
+      "matchPackagePatterns": ["^eslint"],
       "excludePackageNames": ["eslint-foo"]
     }
   ]
@@ -1150,13 +1399,13 @@ The above will match all package names starting with `eslint` but exclude the sp
 ### excludePackagePatterns
 
 Use this field if you want to have one or more package name patterns excluded in your package rule.
-See also `packagePatterns`.
+See also `matchPackagePatterns`.
 
 ```json
 {
   "packageRules": [
     {
-      "packagePatterns": ["^eslint"],
+      "matchPackagePatterns": ["^eslint"],
       "excludePackagePatterns": ["^eslint-foo"]
     }
   ]
@@ -1165,7 +1414,25 @@ See also `packagePatterns`.
 
 The above will match all package names starting with `eslint` but exclude ones starting with `eslint-foo`.
 
-### languages
+### excludePackagePrefixes
+
+Use this field if you want to have one or more package name prefixes excluded in your package rule, without needing to write a regex.
+See also `matchPackagePrefixes`.
+
+```json
+{
+  "packageRules": [
+    {
+      "matchPackagePrefixes": ["eslint"],
+      "excludePackagePrefixes": ["eslint-foo"]
+    }
+  ]
+}
+```
+
+The above will match all package names starting with `eslint` but exclude ones starting with `eslint-foo`.
+
+### matchLanguages
 
 Use this field to restrict rules to a particular language. e.g.
 
@@ -1173,15 +1440,15 @@ Use this field to restrict rules to a particular language. e.g.
 {
   "packageRules": [
     {
-      "packageNames": ["request"],
-      "languages": ["python"],
+      "matchPackageNames": ["request"],
+      "matchLanguages": ["python"],
       "enabled": false
     }
   ]
 }
 ```
 
-### baseBranchList
+### matchBaseBranches
 
 Use this field to restrict rules to a particular branch. e.g.
 
@@ -1189,7 +1456,7 @@ Use this field to restrict rules to a particular branch. e.g.
 {
   "packageRules": [
     {
-      "baseBranchList": ["master"],
+      "matchBaseBranches": ["main"],
       "excludePackagePatterns": ["^eslint"],
       "enabled": false
     }
@@ -1197,7 +1464,7 @@ Use this field to restrict rules to a particular branch. e.g.
 }
 ```
 
-### managers
+### matchManagers
 
 Use this field to restrict rules to a particular package manager. e.g.
 
@@ -1205,15 +1472,15 @@ Use this field to restrict rules to a particular package manager. e.g.
 {
   "packageRules": [
     {
-      "packageNames": ["node"],
-      "managers": ["dockerfile"],
+      "matchPackageNames": ["node"],
+      "matchManagers": ["dockerfile"],
       "enabled": false
     }
   ]
 }
 ```
 
-### datasources
+### matchDatasources
 
 Use this field to restrict rules to a particular datasource. e.g.
 
@@ -1221,7 +1488,7 @@ Use this field to restrict rules to a particular datasource. e.g.
 {
   "packageRules": [
     {
-      "datasources": ["orb"],
+      "matchDatasources": ["orb"],
       "labels": ["circleci-orb!!"]
     }
   ]
@@ -1230,46 +1497,58 @@ Use this field to restrict rules to a particular datasource. e.g.
 
 ### matchCurrentVersion
 
-`matchCurrentVersion` can be an exact semver version or a semver range.
+`matchCurrentVersion` can be an exact SemVer version or a SemVer range.
 
-This field also supports Regular Expressions which have to begin and end with `/`.
-For example, the following will enforce that only `1.*` versions:
+This field also supports Regular Expressions which must begin and end with `/`.
+For example, the following enforces that only `1.*` versions will be used:
 
 ```json
 {
   "packageRules": [
     {
-      "packagePatterns": ["io.github.resilience4j"],
+      "matchPackagePatterns": ["io.github.resilience4j"],
       "matchCurrentVersion": "/^1\\./"
     }
   ]
 }
 ```
 
-This field also supports a special negated regex syntax for ignoring certain versions.
-Use the syntax `!/ /` like the following:
+This field also supports a special negated regex syntax to ignore certain versions.
+Use the syntax `!/ /` like this:
 
 ```json
 {
   "packageRules": [
     {
-      "packagePatterns": ["io.github.resilience4j"],
-      "allowedVersions": "!/^0\\./"
+      "matchPackagePatterns": ["io.github.resilience4j"],
+      "matchCurrentVersion": "!/^0\\./"
     }
   ]
 }
 ```
 
-### packageNames
+### matchFiles
+
+Renovate will compare `matchFiles` for an exact match against the dependency's package file or lock file.
+
+For example the following would match `package.json` but not `package/frontend/package.json`:
+
+```
+  "matchFiles": ["package.json"],
+```
+
+Use `matchPaths` instead if you need more flexible matching.
+
+### matchPackageNames
 
 Use this field if you want to have one or more exact name matches in your package rule.
-See also `excludedPackageNames`.
+See also `excludePackageNames`.
 
 ```json
 {
   "packageRules": [
     {
-      "packageNames": ["angular"],
+      "matchPackageNames": ["angular"],
       "rangeStrategy": "pin"
     }
   ]
@@ -1278,7 +1557,7 @@ See also `excludedPackageNames`.
 
 The above will configure `rangeStrategy` to `pin` only for the package `angular`.
 
-### packagePatterns
+### matchPackagePatterns
 
 Use this field if you want to have one or more package names patterns in your package rule.
 See also `excludePackagePatterns`.
@@ -1287,7 +1566,7 @@ See also `excludePackagePatterns`.
 {
   "packageRules": [
     {
-      "packagePatterns": ["^angular"],
+      "matchPackagePatterns": ["^angular"],
       "rangeStrategy": "replace"
     }
   ]
@@ -1296,22 +1575,40 @@ See also `excludePackagePatterns`.
 
 The above will configure `rangeStrategy` to `replace` for any package starting with `angular`.
 
-### paths
+### matchPackagePrefixes
 
-Renovate will match `paths` against both a partial string match or a minimatch glob pattern.
+Use this field to match a package prefix without needing to write a regex expression.
+See also `excludePackagePrefixes`.
+
+```json
+{
+  "packageRules": [
+    {
+      "matchPackagePrefixes": ["angular"],
+      "rangeStrategy": "replace"
+    }
+  ]
+}
+```
+
+Just like the earlier `matchPackagePatterns` example, the above will configure `rangeStrategy` to `replace` for any package starting with `angular`.
+
+### matchPaths
+
+Renovate will match `matchPaths` against both a partial string match or a minimatch glob pattern.
 If you want to avoid the partial string matching so that only glob matching is performed, wrap your string in `+(...)` like so:
 
 ```
-  "paths": ["+(package.json)"],
+  "matchPaths": ["+(package.json)"],
 ```
 
 The above will match only the root `package.json`, whereas the following would match any `package.json` in any subdirectory too:
 
 ```
-  "paths": ["package.json"],
+  "matchPaths": ["package.json"],
 ```
 
-### sourceUrlPrefixes
+### matchSourceUrlPrefixes
 
 Here's an example of where you use this to group together all packages from the Vue monorepo:
 
@@ -1319,27 +1616,27 @@ Here's an example of where you use this to group together all packages from the 
 {
   "packageRules": [
     {
-      "sourceUrlPrefixes": ["https://github.com/vuejs/vue"],
+      "matchSourceUrlPrefixes": ["https://github.com/vuejs/vue"],
       "groupName": "Vue monorepo packages"
     }
   ]
 }
 ```
 
-Here's an example of where you use this to group together all packages from the `renovatebot` github org:
+Here's an example of where you use this to group together all packages from the `renovatebot` GitHub org:
 
 ```json
 {
   "packageRules": [
     {
-      "sourceUrlPrefixes": ["https://github.com/renovatebot/"],
+      "matchSourceUrlPrefixes": ["https://github.com/renovatebot/"],
       "groupName": "All renovate packages"
     }
   ]
 }
 ```
 
-### updateTypes
+### matchUpdateTypes
 
 Use this field to match rules against types of updates.
 For example to apply a special label for Major updates:
@@ -1348,7 +1645,7 @@ For example to apply a special label for Major updates:
 {
   "packageRules": [
     {
-      "updateTypes": ["major"],
+      "matchUpdateTypes": ["major"],
       "labels": ["UPDATE-MAJOR"]
     }
   ]
@@ -1358,7 +1655,6 @@ For example to apply a special label for Major updates:
 ## patch
 
 Add to this object if you wish to define rules that apply only to patch updates.
-Only applies if `separateMinorPatch` is set to true.
 
 ## php
 
@@ -1370,9 +1666,28 @@ Add to this object if you wish to define rules that apply only to PRs that pin d
 
 If enabled Renovate will pin Docker images by means of their SHA256 digest and not only by tag so that they are immutable.
 
+## platformAutomerge
+
+If you have enabled `automerge` and set `automergeType=pr` in the Renovate config, then you can also set `platformAutomerge` to `true` to speed up merging via the platform's native automerge functionality.
+
+Renovate tries platform-native automerge only when it initially creates the PR.
+Any PR that is being updated will be automerged with the Renovate-based automerge.
+
+`platformAutomerge` will configure PRs to be merged after all (if any) branch policies have been met.
+This option is available for Azure, GitHub and GitLab.
+It falls back to Renovate-based automerge if the platform-native automerge is not available.
+
+You can also fine-tune the behavior by setting `packageRules` if you want to use it selectively (e.g. per-package).
+
+Note that the outcome of `rebaseWhen=auto` can differ when `platformAutomerge=true`.
+Normally when you set `rebaseWhen=auto` Renovate rebases any branch that's behind the base branch automatically, and some people rely on that.
+This behavior is no longer guaranteed when you enable `platformAutomerge` because the platform might automerge a branch which is not up-to-date.
+For example, GitHub might automerge a Renovate branch even if it's behind the base branch at the time.
+
 ## postUpdateOptions
 
-- `gomodTidy`: Run `go mod tidy` after Go module updates
+- `gomodTidy`: Run `go mod tidy` after Go module updates. This is implicitly enabled for major module updates when `gomodUpdateImportPaths` is enabled
+- `gomodUpdateImportPaths`: Update source import paths on major module updates, using [mod](https://github.com/marwan-at-work/mod)
 - `npmDedupe`: Run `npm dedupe` after `package-lock.json` updates
 - `yarnDedupeFewer`: Run `yarn-deduplicate --strategy fewer` after `yarn.lock` updates
 - `yarnDedupeHighest`: Run `yarn-deduplicate --strategy highest` (`yarn dedupe --strategy highest` for Yarn >=2.2.0) after `yarn.lock` updates
@@ -1382,8 +1697,7 @@ If enabled Renovate will pin Docker images by means of their SHA256 digest and n
 Post-upgrade tasks are commands that are executed by Renovate after a dependency has been updated but before the commit is created.
 The intention is to run any additional command line tools that would modify existing files or generate new files when a dependency changes.
 
-This is only available on Renovate instances that have a `trustLevel` of 'high'.
-Each command must match at least one of the patterns defined in `allowedPostUpgradeTasks` in order to be executed.
+Each command must match at least one of the patterns defined in `allowedPostUpgradeCommands` (a global-only configuration option) in order to be executed.
 If the list of allowed tasks is empty then no tasks will be executed.
 
 e.g.
@@ -1392,12 +1706,13 @@ e.g.
 {
   "postUpgradeTasks": {
     "commands": ["tslint --fix"],
-    "fileFilters": ["yarn.lock", "**/*.js"]
+    "fileFilters": ["yarn.lock", "**/*.js"],
+    "executionMode": "update"
   }
 }
 ```
 
-The `postUpgradeTasks` configuration consists of two fields:
+The `postUpgradeTasks` configuration consists of three fields:
 
 ### commands
 
@@ -1406,6 +1721,11 @@ A list of commands that are executed after Renovate has updated a dependency but
 ### fileFilters
 
 A list of glob-style matchers that determine which files will be included in the final commit made by Renovate
+
+### executionMode
+
+Defaults to `update`, but can also be set to `branch`. This sets the level the postUpgradeTask runs on, if set to `update` the postUpgradeTask
+will be executed for every dependency on the branch. If set to `branch` the postUpgradeTask is executed for the whole branch.
 
 ## prBodyColumns
 
@@ -1493,10 +1813,16 @@ This setting tells Renovate when you would like it to raise PRs:
 - `not-pending`: Renovate will wait until status checks have completed (passed or failed) before raising the PR
 - `status-success`: Renovate won't raise PRs unless tests pass
 
-Renovate defaults to `immediate` but some like to change to `not-pending`.
-If you configure to immediate, it means you will usually get GitHub notifications that a new PR is available but if you view it immediately then it will still have "pending" tests so you can't take any action.
-With `not-pending`, it means that when you receive the PR notification, you can see if it passed or failed and take action immediately.
-Therefore you can customise this setting if you wish to be notified a little later in order to reduce "noise".
+Renovate defaults to `immediate` but you might want to change this to `not-pending` instead.
+
+With prCreation set to `immediate`, you'll get a Pull Request and possible associated notification right away when a new update is available.
+Your test suite takes a bit of time to complete, so if you go look at the new PR right away, you don't know if your tests pass or fail.
+You're basically waiting until you have the test results, before you can decide if you want to merge the PR or not.
+
+With prCreation set to `not-pending`, Renovate waits until all tests have finished running, and only then creates the PR.
+When you receive the PR notification, you can take action immediately, as you have the full test results.
+
+When you set prCreation to `not-pending` you're reducing the "noise" but get notified of new PRs a bit later.
 
 ## prFooter
 
@@ -1506,11 +1832,11 @@ Therefore you can customise this setting if you wish to be notified a little lat
 
 This setting - if enabled - helps slow down Renovate, particularly during the onboarding phase. What may happen without this setting is:
 
-1.  Onboarding PR is created
-2.  User merges onboarding PR to activate Renovate
-3.  Renovate creates a "Pin Dependencies" PR (if necessary)
-4.  User merges Pin PR
-5.  Renovate then creates every single upgrade PR necessary - potentially dozens
+1. Onboarding PR is created
+2. User merges onboarding PR to activate Renovate
+3. Renovate creates a "Pin Dependencies" PR (if necessary)
+4. User merges Pin PR
+5. Renovate then creates every single upgrade PR necessary - potentially dozens
 
 The above can result in swamping CI systems, as well as a lot of retesting if branches need to be rebased every time one is merged.
 Instead, if `prHourlyLimit` is configure to a value like 1 or 2, it will mean that Renovate creates at most that many new PRs within each hourly period (:00-:59).
@@ -1540,11 +1866,11 @@ Here's an example of how you would define PR priority so that devDependencies ar
 {
   "packageRules": [
     {
-      "depTypeList": ["devDependencies"],
+      "matchDepTypes": ["devDependencies"],
       "prPriority": -1
     },
     {
-      "packageNames": ["react"],
+      "matchPackageNames": ["react"],
       "prPriority": 5
     }
   ]
@@ -1571,19 +1897,17 @@ Behavior:
 - `auto` = Renovate decides (this will be done on a manager-by-manager basis)
 - `pin` = convert ranges to exact versions, e.g. `^1.0.0` -> `1.1.0`
 - `bump` = e.g. bump the range even if the new version satisfies the existing range, e.g. `^1.0.0` -> `^1.1.0`
-- `replace` = Replace the range with a newer one if the new version falls outside it, e.g. `^1.0.0` -> `^2.0.0`
+- `replace` = Replace the range with a newer one if the new version falls outside it, and update nothing otherwise
 - `widen` = Widen the range with newer one, e.g. `^1.0.0` -> `^1.0.0 || ^2.0.0`
-- `update-lockfile` = Update the lock file when in-range updates are available, otherwise `replace` for updates out of range. Works for `bundler`, `composer`, `npm`, and `yarn`, so far
+- `update-lockfile` = Update the lock file when in-range updates are available, otherwise `replace` for updates out of range. Works for `bundler`, `composer`, `npm`, `yarn`, `terraform` and `poetry` so far
 
 Renovate's `"auto"` strategy works like this for npm:
 
-1.  Always pin `devDependencies`
-2.  Pin `dependencies` if we detect that it's an app and not a library
-3.  Widen `peerDependencies`
-4.  If an existing range already ends with an "or" operator - e.g. `"^1.0.0 || ^2.0.0"` - then Renovate will widen it, e.g. making it into `"^1.0.0 || ^2.0.0 || ^3.0.0"`
-5.  Otherwise, replace the range. e.g. `"^2.0.0"` would be replaced by `"^3.0.0"`
-
-**bump**
+1. Always pin `devDependencies`
+2. Pin `dependencies` if we detect that it's an app and not a library
+3. Widen `peerDependencies`
+4. If an existing range already ends with an "or" operator - e.g. `"^1.0.0 || ^2.0.0"` - then Renovate will widen it, e.g. making it into `"^1.0.0 || ^2.0.0 || ^3.0.0"`
+5. Otherwise, replace the range. e.g. `"^2.0.0"` would be replaced by `"^3.0.0"`
 
 By default, Renovate assumes that if you are using ranges then it's because you want them to be wide/open.
 As such, Renovate won't deliberately "narrow" any range by increasing the semver value inside.
@@ -1603,11 +1927,16 @@ By default this label is `"rebase"` however you can configure it to anything you
 Possible values and meanings:
 
 - `auto`: Renovate will autodetect the best setting. Defaults to `conflicted` unless the repository has a setting requiring PRs to be up to date with the base branch
-- `never`: Renovate will never rebase the branch
+- `never`: Renovate will never rebase the branch or update it unless manually requested
 - `conflicted`: Renovate will rebase only if the branch is conflicted
 - `behind-base-branch`: Renovate will rebase whenever the branch falls 1 or more commit behind its base branch
 
-Note: this field replaces the previous fields of `rebaseConflictedPrs` and `rebaseStalePrs`.
+`rebaseWhen=conflicted` is not recommended if you have enabled Renovate automerge, because:
+
+- It could result in a broken base branch if two updates are merged one after another without testing the new versions together
+- If you have enforced that PRs must be up-to-date before merging (e.g. using branch protection on GitHub), then automerge won't be possible as soon as a PR gets out-of-date but remains non-conflicted
+
+It is also recommended to avoid `rebaseWhen=never` as it can result in conflicted branches with outdated PR descriptions and/or status checks.
 
 ## recreateClosed
 
@@ -1637,7 +1966,7 @@ It's not recommended to do both, due to the potential for confusion.
 It is recommended to also include `versioning` however if it is missing then it will default to `semver`.
 
 For more details and examples, see the documentation page the for the regex manager [here](/modules/manager/regex/).
-For template fields, use the triple brace `{{{ }}}` notation to avoid `handlebars` escaping any special characters.
+For template fields, use the triple brace `{{{ }}}` notation to avoid Handlebars escaping any special characters.
 
 ### matchStrings
 
@@ -1703,6 +2032,8 @@ However, the `recursive` strategy still allows the matching of multiple dependen
 All matches of the first `matchStrings` pattern are detected, then each of these matches will used as basis be used as the input for the next `matchStrings` pattern, and so on.
 If the next `matchStrings` pattern has multiple matches then it will split again.
 This process will be followed as long there is a match plus a next `matchingStrings` pattern is available or a dependency is detected.
+
+Matched groups will be available in subsequent matching layers.
 
 This is an example how this can work.
 The first regex manager will only upgrade `grafana/loki` as looks for the `backup` key then looks for the `test` key and then uses this result for extraction of necessary attributes.
@@ -1808,34 +2139,92 @@ In the above example, each regex manager will match a single dependency each.
 ### depNameTemplate
 
 If `depName` cannot be captured with a named capture group in `matchString` then it can be defined manually using this field.
-It will be compiled using `handlebars` and the regex `groups` result.
+It will be compiled using Handlebars and the regex `groups` result.
+
+### extractVersionTemplate
+
+If `extractVersion` cannot be captured with a named capture group in `matchString` then it can be defined manually using this field.
+It will be compiled using Handlebars and the regex `groups` result.
 
 ### lookupNameTemplate
 
 `lookupName` is used for looking up dependency versions.
-It will be compiled using `handlebars` and the regex `groups` result.
+It will be compiled using Handlebars and the regex `groups` result.
 It will default to the value of `depName` if left unconfigured/undefined.
+
+### currentValueTemplate
+
+If the `currentValue` for a dependency is not captured with a named group then it can be defined in config using this field.
+It will be compiled using Handlebars and the regex `groups` result.
 
 ### datasourceTemplate
 
 If the `datasource` for a dependency is not captured with a named group then it can be defined in config using this field.
-It will be compiled using `handlebars` and the regex `groups` result.
+It will be compiled using Handlebars and the regex `groups` result.
+
+### depTypeTemplate
+
+If `depType` cannot be captured with a named capture group in `matchString` then it can be defined manually using this field.
+It will be compiled using Handlebars and the regex `groups` result.
 
 ### versioningTemplate
 
 If the `versioning` for a dependency is not captured with a named group then it can be defined in config using this field.
-It will be compiled using `handlebars` and the regex `groups` result.
+It will be compiled using Handlebars and the regex `groups` result.
+
+### registryUrlTemplate
+
+If the `registryUrls` for a dependency is not captured with a named group then it can be defined in config using this field.
+It will be compiled using Handlebars and the regex `groups` result.
+
+### autoReplaceStringTemplate
+
+Allows overwriting how the matched string is replaced.
+This allows for some migration strategies.
+E.g. moving from one Docker image repository to another one.
+
+helm-values.yaml:
+
+```yaml
+# The image of the service <registry>/<repo>/<image>:<tag>
+image: my.old.registry/aRepository/andImage:1.18-alpine
+```
+
+regex definition:
+
+```json
+{
+  "regexManagers": [
+    {
+      "fileMatch": ["values.yaml$"],
+      "matchStrings": [
+        "image:\\s+(?<depName>my\\.old\\.registry\\/aRepository\\/andImage):(?<currentValue>[^\\s]+)"
+      ],
+      "depNameTemplate": "my.new.registry/aRepository/andImage",
+      "autoReplaceStringTemplate": "image: {{{depName}}}:{{{newValue}}}",
+      "datasourceTemplate": "docker"
+    }
+  ]
+}
+```
+
+This will lead to following update where `1.21-alpine` is the newest version of `my.new.registry/aRepository/andImage`:
+
+```yaml
+# The image of the service <registry>/<repo>/<image>:<tag>
+image: my.new.registry/aRepository/andImage:1.21-alpine
+```
 
 ## registryUrls
 
 Usually Renovate is able to either (a) use the default registries for a datasource, or (b) automatically detect during the manager extract phase which custom registries are in use.
-In case there is a need to configure them manually, it can be done using this `registryUrls` field, typically using `packageUrls` like so:
+In case there is a need to configure them manually, it can be done using this `registryUrls` field, typically using `packageRules` like so:
 
 ```json
 {
   "packageRules": [
     {
-      "datasources": ["docker"],
+      "matchDatasources": ["docker"],
       "registryUrls": ["https://docker.mycompany.domain"]
     }
   ]
@@ -1843,16 +2232,6 @@ In case there is a need to configure them manually, it can be done using this `r
 ```
 
 The field supports multiple URLs however it is datasource-dependent on whether only the first is used or multiple.
-
-## requiredStatusChecks
-
-Currently Renovate's default behavior is to only automerge if every status check has succeeded.
-
-Setting this option to `null` means that Renovate will ignore all status checks.
-You need to set this if you don't have any status checks but still want Renovate to automerge PRs.
-
-In future, this might be configurable to allow certain status checks to be ignored/required.
-See [issue 1853 at the renovate repository](https://github.com/renovatebot/renovate/issues/1853) for more details.
 
 ## respectLatest
 
@@ -1862,7 +2241,15 @@ By default, `renovate` will update to a version greater than `latest` only if th
 ## reviewers
 
 Must be valid usernames.
-If on GitHub and assigning a team to review, use the prefix `team:`, e.g. provide a value like `team:someteam`.
+
+If on GitHub and assigning a team to review, you must use the prefix `team:` and add the _last part_ of the team name.
+Say the full team name on GitHub is `@organization/foo`, then you'd set the config option like this:
+
+```json
+{
+  "reviewers": "team:foo"
+}
+```
 
 ## reviewersFromCodeOwners
 
@@ -1874,9 +2261,19 @@ See [GitHub](https://help.github.com/en/github/creating-cloning-and-archiving-re
 
 Take a random sample of given size from reviewers.
 
+## rollback
+
+Add to this object if you wish to define rules that apply only to PRs that roll back versions.
+
 ## rollbackPrs
 
-Configure this to `false` either globally, per-language, or per-package if you want to disable Renovate's behavior of generating rollback PRs when it can't find the current version on the registry anymore.
+There are times when a dependency version in use by a project gets removed from the registry.
+For some registries, existing releases or even whole packages can be removed or "yanked" at any time, while for some registries only very new or unused releases can be removed.
+Renovate's "rollback" feature exists to propose a downgrade to the next-highest release if the current release is no longer found in the registry.
+
+Renovate does not create these rollback PRs by default, with one exception: npm packages get a rollback PR if needed.
+
+You can configure the `rollbackPrs` property globally, per-lanuage, or per-package to override the default behavior.
 
 ## ruby
 
@@ -1923,14 +2320,16 @@ To restrict `aws-sdk` to only monthly updates, you could add this package rule:
 {
   "packageRules": [
     {
-      "packageNames": ["aws-sdk"],
+      "matchPackageNames": ["aws-sdk"],
       "extends": ["schedule:monthly"]
     }
   ]
 }
 ```
 
-Technical details: We mostly rely on the text parsing of the library [later](https://bunkat.github.io/later/parsers.html#text) but only its concepts of "days", "time_before", and "time_after" (Renovate does not support scheduled minutes or "at an exact time" granularity).
+Technical details: We mostly rely on the text parsing of the library [@breejs/later](https://github.com/breejs/later) but only its concepts of "days", "time_before", and "time_after".
+Read the parser documentation at [breejs.github.io/later/parsers.html#text](https://breejs.github.io/later/parsers.html#text).
+Renovate does not support scheduled minutes or "at an exact time" granularity.
 
 ## semanticCommitScope
 
@@ -1947,7 +2346,7 @@ If you wish to change it to something else like "ci" then it will look like `"ci
 
 If you are using a semantic prefix for your commits, then you will want to enable this setting.
 Although it's configurable to a package-level, it makes most sense to configure it at a repository level.
-If configured to `true`, then the `semanticCommitScope` and `semanticCommitType` fields will be used for each commit message and PR title.
+If configured to `enabled`, then the `semanticCommitScope` and `semanticCommitType` fields will be used for each commit message and PR title.
 
 However, please note that Renovate will autodetect if your repository is already using semantic commits or not and follow suit, so you only really need to configure this if you wish to _override_ Renovate's autodetected setting.
 
@@ -1962,7 +2361,7 @@ It is recommended that you leave this setting to `true`, because of the polite w
 For example, let's say in the above example that you decided you wouldn't update to Webpack 3 for a long time and don't want to build/test every time a new 3.x version arrives.
 In that case, simply close the "Update Webpack to version 3.x" PR and it _won't_ be recreated again even if subsequent Webpack 3.x versions are released.
 You can continue with Webpack 2.x for as long as you want and receive any updates/patches that are made for it.
-Then eventually when you do want to update to Webpack 3.x you can make that update to `package.json` yourself and commit it to master once it's tested.
+Then eventually when you do want to update to Webpack 3.x you can make that update to `package.json` yourself and commit it to the base branch once it's tested.
 After that, Renovate will resume providing you updates to 3.x again!
 i.e. if you close a major upgrade PR then it won't come back again, but once you make the major upgrade yourself then Renovate will resume providing you with minor or patch updates.
 
@@ -1980,27 +2379,52 @@ If this setting is true then you would get one PR for webpack@v2 and one for web
 
 ## stabilityDays
 
-If this is configured to a non-zero value, and an update has a release date/timestamp available, then Renovate will check if the configured "stability days" have elapsed.
-If the days since the release is less than the configured stability days then a "pending" status check will be added to the branch.
-If enough days have passed then a passing status check will be added.
+If this is set to a non-zero value, _and_ an update contains a release timestamp header, then Renovate will check if the "stability days" have passed.
 
-There are a couple of uses for this:
+Note: Renovate will wait for the set amount of `stabilityDays` to pass for each **separate** version.
+Renovate does not wait until the package has seen no releases for x `stabilityDays`.
+`stabilityDays` is not intended to help with slowing down fast releasing project updates.
+If you want to slow down PRs for a specific package, setup a custom schedule for that package.
+Read [our selective-scheduling help](https://docs.renovatebot.com/noise-reduction/#selective-scheduling) to learn how to set the schedule.
+
+If the amount of days since the release is less than the set `stabilityDays` a "pending" status check is added to the branch.
+If enough days have passed then the "pending" status is removed, and a "passing" status check is added.
+
+Some datasources do not provide a release timestamp (in which case this feature is not compatible), and other datasources may provide a release timestamp but it's not supported by Renovate (in which case a feature request needs to be implemented).
+
+Maven users: you cannot use `stabilityDays` if a Maven source returns unreliable `last-modified` headers.
+
+There are a couple of uses for `stabilityDays`:
+
+<!-- markdownlint-disable MD001 -->
 
 #### Suppress branch/PR creation for X days
 
 If you combine `stabilityDays=3` and `prCreation="not-pending"` then Renovate will hold back from creating branches until 3 or more days have elapsed since the version was released.
 It's recommended that you enable `dependencyDashboard=true` so you don't lose visibility of these pending PRs.
 
+#### Prevent holding broken npm packages
+
+npm packages less than 72 hours (3 days) old can be unpublished, which could result in a service impact if you have already updated to it.
+Set `stabilityDays` to 3 for npm packages to prevent relying on a package that can be removed from the registry:
+
+```json
+{
+  "packageRules": [
+    {
+      "matchDatasources": ["npm"],
+      "stabilityDays": 3
+    }
+  ]
+}
+```
+
 #### Await X days before Automerging
 
 If you have both `automerge` as well as `stabilityDays` enabled, it means that PRs will be created immediately but automerging will be delayed until X days have passed.
 This works because Renovate will add a "renovate/stability-days" pending status check to each branch/PR and that pending check will prevent the branch going green to automerge.
 
-## supportPolicy
-
-Language support is limited to those listed below:
-
-- **Node.js** - [Read our Node.js documentation](https://docs.renovatebot.com/node#configuring-support-policy)
+<!-- markdownlint-enable MD001 -->
 
 ## suppressNotifications
 
@@ -2020,31 +2444,63 @@ The above config will suppress the comment which is added to a PR whenever you c
 It is only recommended to configure this field if you wish to use the `schedules` feature and want to write them in your local timezone.
 Please see the above link for valid timezone names.
 
+## transitiveRemediation
+
+When enabled, Renovate will attempt to remediate vulnerabilities even if they exist only in transitive dependencies.
+
+Applicable only for GitHub platform (with vulnerability alerts enabled), `npm` manager, and when a `package-lock.json` v1 format is present.
+This is considered a feature flag with the aim to remove it and default to this behavior once it has been more widely tested.
+
 ## unicodeEmoji
 
-If enabled emoji shortcodes (`:warning:`) are replaced with their unicode equivalents (`⚠️`)
+If enabled emoji shortcodes (`:warning:`) are replaced with their Unicode equivalents (`⚠️`).
+
+## updateInternalDeps
+
+Renovate defaults to skipping any internal package dependencies within monorepos.
+In such case dependency versions won't be updated by Renovate.
+
+To opt in to letting Renovate update internal package versions normally, set this configuration option to true.
 
 ## updateLockFiles
 
 ## updateNotScheduled
 
 When schedules are in use, it generally means "no updates".
-However there are cases where updates might be desirable - e.g. if you have configured prCreation=not-pending, or you have rebaseStale=true and master branch is updated so you want Renovate PRs to be rebased.
+However there are cases where updates might be desirable - e.g. if you have configured prCreation=not-pending, or you have rebaseWhen=behind-base-branch and the base branch is updated so you want Renovate PRs to be rebased.
 
 This defaults to `true`, meaning that Renovate will perform certain "desirable" updates to _existing_ PRs even when outside of schedule.
 If you wish to disable all updates outside of scheduled hours then configure this field to `false`.
 
+## updatePinnedDependencies
+
+By default, Renovate will attempt to update all detected dependencies, regardless of whether they are defined using pinned single versions (e.g. `1.2.3`) or constraints/ranges (e.g. (`^1.2.3`).
+You can set this option to `false` if you wish to disable updating for pinned (single version) dependencies specifically.
+
 ## versioning
 
-Usually, each language or package manager has a specific type of "versioning". e.g. JavaScript uses npm's semver implementation, Python uses pep440, etc.
-At Renovate we have also implemented some of our own, such as `"docker"` to address the most common way people tag versions using Docker, and `"loose"` as a fallback that tries semver first but otherwise just does its best to sort and compare.
+Usually, each language or package manager has a specific type of "versioning":
+JavaScript uses npm's SemVer implementation, Python uses pep440, etc.
 
-By exposing `versioning` to config, it allows you to override the default versioning for a package manager if you really need.
-In most cases it would not be recommended, but there are some cases such as Docker or Gradle where versioning is not strictly defined and you may need to specify the versioning type per-package.
+Renovate also uses custom versioning, like `"docker"` to address the most common way people tag versions using Docker, and `"loose"` as a fallback that tries SemVer first but otherwise just does its best to sort and compare.
+
+By exposing `versioning` to config, you can override the default versioning for a package manager if needed.
+We do not recommend overriding the default versioning, but there are some cases such as Docker or Gradle where versioning is not strictly defined and you may need to specify the versioning type per-package.
+
+Renovate supports 4-part versions (1.2.3.4) in full for the NuGet package manager.
+Other managers can use the `"loose"` versioning fallback: the first 3 parts are used as the version, all trailing parts are used for alphanumeric sorting.
 
 ## vulnerabilityAlerts
 
-Use this object to customise PRs that are raised when vulnerability alerts are detected (GitHub-only).
+Renovate can read from GitHub's Vulnerability Alerts and customize Pull Requests accordingly.
+For this to work, you must first ensure you have enabled "[Dependency graph](https://docs.github.com/en/code-security/supply-chain-security/about-the-dependency-graph#enabling-the-dependency-graph)" and "[Dependabot alerts](https://docs.github.com/en/github/administering-a-repository/managing-security-and-analysis-settings-for-your-repository)" under the "Security & analysis" section of the repository's "Settings" tab.
+
+Additionally, if you are running Renovate in app mode then you must make sure that the app has been granted the permissions to read "Vulnerability alerts".
+If you are the account admin, browse to the app (e.g. [https://github.com/apps/renovate](https://github.com/apps/renovate)), select "Configure", and then scroll down to the "Permissions" section and verify that read access to "vulnerability alerts" is mentioned.
+
+Once the above conditions are met, and you have received one or more vulnerability alerts from GitHub for this repository, then Renovate will attempt to raise fix PRs accordingly.
+
+Use the `vulnerabilityAlerts` configuration object if you want to customise vulnerability-fix PRs specifically.
 For example, to configure custom labels and assignees:
 
 ```json
@@ -2056,7 +2512,7 @@ For example, to configure custom labels and assignees:
 }
 ```
 
-To disable vulnerability alerts completely, configure like this:
+To disable the vulnerability alerts functionality completely, configure like this:
 
 ```json
 {
@@ -2065,5 +2521,3 @@ To disable vulnerability alerts completely, configure like this:
   }
 }
 ```
-
-## yarnrc

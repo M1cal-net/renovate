@@ -1,14 +1,14 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
-exports[`datasource/github-tags getDigest returns commit digest 1`] = `
+exports[`datasource/github-tags/index getDigest returns commit digest 1`] = `
 Array [
   Object {
     "headers": Object {
       "accept": "application/vnd.github.v3+json",
-      "accept-encoding": "gzip, deflate",
+      "accept-encoding": "gzip, deflate, br",
       "authorization": "token some-token",
       "host": "api.github.com",
-      "user-agent": "https://github.com/renovatebot/renovate",
+      "user-agent": "RenovateBot/0.0.0-semantic-release (https://github.com/renovatebot/renovate)",
     },
     "method": "GET",
     "url": "https://api.github.com/repos/some/dep/git/refs/tags/v1.2.0",
@@ -16,15 +16,15 @@ Array [
 ]
 `;
 
-exports[`datasource/github-tags getDigest returns digest 1`] = `
+exports[`datasource/github-tags/index getDigest returns digest 1`] = `
 Array [
   Object {
     "headers": Object {
       "accept": "application/vnd.github.v3+json",
-      "accept-encoding": "gzip, deflate",
+      "accept-encoding": "gzip, deflate, br",
       "authorization": "token some-token",
       "host": "api.github.com",
-      "user-agent": "https://github.com/renovatebot/renovate",
+      "user-agent": "RenovateBot/0.0.0-semantic-release (https://github.com/renovatebot/renovate)",
     },
     "method": "GET",
     "url": "https://api.github.com/repos/some/dep/commits?per_page=1",
@@ -32,15 +32,15 @@ Array [
 ]
 `;
 
-exports[`datasource/github-tags getDigest returns null for missed tagged digest 1`] = `
+exports[`datasource/github-tags/index getDigest returns null for missed tagged digest 1`] = `
 Array [
   Object {
     "headers": Object {
       "accept": "application/vnd.github.v3+json",
-      "accept-encoding": "gzip, deflate",
+      "accept-encoding": "gzip, deflate, br",
       "authorization": "token some-token",
       "host": "api.github.com",
-      "user-agent": "https://github.com/renovatebot/renovate",
+      "user-agent": "RenovateBot/0.0.0-semantic-release (https://github.com/renovatebot/renovate)",
     },
     "method": "GET",
     "url": "https://api.github.com/repos/some/dep/git/refs/tags/v1.2.0",
@@ -48,15 +48,15 @@ Array [
 ]
 `;
 
-exports[`datasource/github-tags getDigest returns null if no token 1`] = `
+exports[`datasource/github-tags/index getDigest returns null if no token 1`] = `
 Array [
   Object {
     "headers": Object {
       "accept": "application/vnd.github.v3+json",
-      "accept-encoding": "gzip, deflate",
+      "accept-encoding": "gzip, deflate, br",
       "authorization": "token some-token",
       "host": "api.github.com",
-      "user-agent": "https://github.com/renovatebot/renovate",
+      "user-agent": "RenovateBot/0.0.0-semantic-release (https://github.com/renovatebot/renovate)",
     },
     "method": "GET",
     "url": "https://api.github.com/repos/some/dep/commits?per_page=1",
@@ -64,15 +64,15 @@ Array [
 ]
 `;
 
-exports[`datasource/github-tags getDigest returns tagged commit digest 1`] = `
+exports[`datasource/github-tags/index getDigest returns tagged commit digest 1`] = `
 Array [
   Object {
     "headers": Object {
       "accept": "application/vnd.github.v3+json",
-      "accept-encoding": "gzip, deflate",
+      "accept-encoding": "gzip, deflate, br",
       "authorization": "token some-token",
       "host": "api.github.com",
-      "user-agent": "https://github.com/renovatebot/renovate",
+      "user-agent": "RenovateBot/0.0.0-semantic-release (https://github.com/renovatebot/renovate)",
     },
     "method": "GET",
     "url": "https://api.github.com/repos/some/dep/git/refs/tags/v1.2.0",
@@ -80,10 +80,10 @@ Array [
   Object {
     "headers": Object {
       "accept": "application/vnd.github.v3+json",
-      "accept-encoding": "gzip, deflate",
+      "accept-encoding": "gzip, deflate, br",
       "authorization": "token some-token",
       "host": "api.github.com",
-      "user-agent": "https://github.com/renovatebot/renovate",
+      "user-agent": "RenovateBot/0.0.0-semantic-release (https://github.com/renovatebot/renovate)",
     },
     "method": "GET",
     "url": "https://api.github.com/some-url",
@@ -91,15 +91,15 @@ Array [
 ]
 `;
 
-exports[`datasource/github-tags getDigest supports ghe 1`] = `
+exports[`datasource/github-tags/index getDigest supports ghe 1`] = `
 Array [
   Object {
     "headers": Object {
       "accept": "application/vnd.github.v3+json",
-      "accept-encoding": "gzip, deflate",
+      "accept-encoding": "gzip, deflate, br",
       "authorization": "token some-token",
       "host": "git.enterprise.com",
-      "user-agent": "https://github.com/renovatebot/renovate",
+      "user-agent": "RenovateBot/0.0.0-semantic-release (https://github.com/renovatebot/renovate)",
     },
     "method": "GET",
     "url": "https://git.enterprise.com/api/v3/repos/some/dep/commits?per_page=1",
@@ -107,10 +107,10 @@ Array [
   Object {
     "headers": Object {
       "accept": "application/vnd.github.v3+json",
-      "accept-encoding": "gzip, deflate",
+      "accept-encoding": "gzip, deflate, br",
       "authorization": "token some-token",
       "host": "git.enterprise.com",
-      "user-agent": "https://github.com/renovatebot/renovate",
+      "user-agent": "RenovateBot/0.0.0-semantic-release (https://github.com/renovatebot/renovate)",
     },
     "method": "GET",
     "url": "https://git.enterprise.com/api/v3/repos/some/dep/git/refs/tags/v1.2.0",
@@ -118,15 +118,15 @@ Array [
 ]
 `;
 
-exports[`datasource/github-tags getDigest warns if unknown ref 1`] = `
+exports[`datasource/github-tags/index getDigest warns if unknown ref 1`] = `
 Array [
   Object {
     "headers": Object {
       "accept": "application/vnd.github.v3+json",
-      "accept-encoding": "gzip, deflate",
+      "accept-encoding": "gzip, deflate, br",
       "authorization": "token some-token",
       "host": "api.github.com",
-      "user-agent": "https://github.com/renovatebot/renovate",
+      "user-agent": "RenovateBot/0.0.0-semantic-release (https://github.com/renovatebot/renovate)",
     },
     "method": "GET",
     "url": "https://api.github.com/repos/some/dep/git/refs/tags/v1.2.0",
@@ -134,8 +134,9 @@ Array [
 ]
 `;
 
-exports[`datasource/github-tags getReleases returns tags 1`] = `
+exports[`datasource/github-tags/index getReleases returns tags 1`] = `
 Object {
+  "registryUrl": "https://github.com",
   "releases": Array [
     Object {
       "gitRef": "v1.0.0",
@@ -153,15 +154,15 @@ Object {
 }
 `;
 
-exports[`datasource/github-tags getReleases returns tags 2`] = `
+exports[`datasource/github-tags/index getReleases returns tags 2`] = `
 Array [
   Object {
     "headers": Object {
       "accept": "application/vnd.github.v3+json",
-      "accept-encoding": "gzip, deflate",
+      "accept-encoding": "gzip, deflate, br",
       "authorization": "token some-token",
       "host": "api.github.com",
-      "user-agent": "https://github.com/renovatebot/renovate",
+      "user-agent": "RenovateBot/0.0.0-semantic-release (https://github.com/renovatebot/renovate)",
     },
     "method": "GET",
     "url": "https://api.github.com/repos/some/dep2/tags?per_page=100",
@@ -169,10 +170,10 @@ Array [
   Object {
     "headers": Object {
       "accept": "application/vnd.github.v3+json",
-      "accept-encoding": "gzip, deflate",
+      "accept-encoding": "gzip, deflate, br",
       "authorization": "token some-token",
       "host": "api.github.com",
-      "user-agent": "https://github.com/renovatebot/renovate",
+      "user-agent": "RenovateBot/0.0.0-semantic-release (https://github.com/renovatebot/renovate)",
     },
     "method": "GET",
     "url": "https://api.github.com/repos/some/dep2/releases?per_page=100",
@@ -180,7 +181,7 @@ Array [
 ]
 `;
 
-exports[`datasource/github-tags getReleases supports ghe 1`] = `
+exports[`datasource/github-tags/index getReleases supports ghe 1`] = `
 Object {
   "releases": Array [
     Object {
@@ -196,15 +197,15 @@ Object {
 }
 `;
 
-exports[`datasource/github-tags getReleases supports ghe 2`] = `
+exports[`datasource/github-tags/index getReleases supports ghe 2`] = `
 Array [
   Object {
     "headers": Object {
       "accept": "application/vnd.github.v3+json",
-      "accept-encoding": "gzip, deflate",
+      "accept-encoding": "gzip, deflate, br",
       "authorization": "token some-token",
       "host": "git.enterprise.com",
-      "user-agent": "https://github.com/renovatebot/renovate",
+      "user-agent": "RenovateBot/0.0.0-semantic-release (https://github.com/renovatebot/renovate)",
     },
     "method": "GET",
     "url": "https://git.enterprise.com/api/v3/repos/some/dep2/tags?per_page=100",
@@ -212,10 +213,10 @@ Array [
   Object {
     "headers": Object {
       "accept": "application/vnd.github.v3+json",
-      "accept-encoding": "gzip, deflate",
+      "accept-encoding": "gzip, deflate, br",
       "authorization": "token some-token",
       "host": "git.enterprise.com",
-      "user-agent": "https://github.com/renovatebot/renovate",
+      "user-agent": "RenovateBot/0.0.0-semantic-release (https://github.com/renovatebot/renovate)",
     },
     "method": "GET",
     "url": "https://git.enterprise.com/api/v3/repos/some/dep2/releases?per_page=100",

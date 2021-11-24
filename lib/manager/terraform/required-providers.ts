@@ -1,11 +1,12 @@
-import { PackageDependency } from '../common';
-import {
-  ExtractionResult,
-  TerraformDependencyTypes,
-  keyValueExtractionRegex,
-} from './util';
+import { regEx } from '../../util/regex';
+import type { PackageDependency } from '../types';
+import { TerraformDependencyTypes } from './common';
+import type { ProviderLock } from './lockfile/types';
+import { analyzeTerraformProvider } from './providers';
+import type { ExtractionResult } from './types';
+import { keyValueExtractionRegex } from './util';
 
-export const providerBlockExtractionRegex = /^\s*(?<key>[^\s]+)\s+=\s+{/;
+export const providerBlockExtractionRegex = regEx(/^\s*(?<key>[^\s]+)\s+=\s+{/);
 
 function extractBlock(
   lineNum: number,
@@ -19,7 +20,6 @@ function extractBlock(
     line = lines[lineNumber];
     const kvMatch = keyValueExtractionRegex.exec(line);
     if (kvMatch) {
-      /* eslint-disable no-param-reassign */
       switch (kvMatch.groups.key) {
         case 'source':
           dep.managerData.source = kvMatch.groups.value;
@@ -33,7 +33,6 @@ function extractBlock(
         default:
           break;
       }
-      /* eslint-enable no-param-reassign */
     }
   } while (line.trim() !== '}');
   return lineNumber;
@@ -71,4 +70,12 @@ export function extractTerraformRequiredProviders(
     }
   } while (line.trim() !== '}');
   return { lineNumber, dependencies: deps };
+}
+
+export function analyzeTerraformRequiredProvider(
+  dep: PackageDependency,
+  locks: ProviderLock[]
+): void {
+  analyzeTerraformProvider(dep, locks);
+  dep.depType = `required_provider`;
 }

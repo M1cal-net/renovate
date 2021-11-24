@@ -1,7 +1,7 @@
 import is from '@sindresorhus/is';
 import { clone } from '../util/clone';
-import { PackageRule, RenovateConfig, UpdateType } from './common';
-import { getOptions } from './definitions';
+import { getOptions } from './options';
+import type { PackageRule, RenovateConfig, UpdateType } from './types';
 
 const options = getOptions();
 
@@ -47,7 +47,6 @@ export function massageConfig(config: RenovateConfig): RenovateConfig {
       'patch',
       'pin',
       'digest',
-      'lockFileMaintenance',
       'rollback',
     ];
     for (const rule of massagedConfig.packageRules) {
@@ -57,10 +56,15 @@ export function massageConfig(config: RenovateConfig): RenovateConfig {
         PackageRule
       ][]) {
         if (updateTypes.includes(key)) {
-          const newRule = clone(rule);
-          newRule.updateTypes = rule.updateTypes || [];
-          newRule.updateTypes.push(key);
-          Object.assign(newRule, val);
+          let newRule = clone(rule);
+          Object.keys(newRule).forEach((newKey) => {
+            if (!(newKey.startsWith(`match`) || newKey.startsWith('exclude'))) {
+              delete newRule[newKey];
+            }
+          });
+          newRule.matchUpdateTypes = rule.matchUpdateTypes || [];
+          newRule.matchUpdateTypes.push(key);
+          newRule = { ...newRule, ...val };
           newRules.push(newRule);
         }
       }

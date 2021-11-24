@@ -1,15 +1,22 @@
-import { safeLoad } from 'js-yaml';
-
-import { id as gitTagDatasource } from '../../datasource/git-tags';
+import { load } from 'js-yaml';
+import * as upath from 'upath';
+import { GitTagsDatasource } from '../../datasource/git-tags';
 import { logger } from '../../logger';
+import { readLocalFile } from '../../util/fs';
 import { id as dockerVersioning } from '../../versioning/docker';
 import { id as semverVersioning } from '../../versioning/semver';
-import { PackageDependency, PackageFile } from '../common';
 import { getDep } from '../dockerfile/extract';
-import { BatectConfig, BatectGitInclude } from './types';
+import type { ExtractConfig, PackageDependency, PackageFile } from '../types';
+import type {
+  BatectConfig,
+  BatectFileInclude,
+  BatectGitInclude,
+  BatectInclude,
+  ExtractionResult,
+} from './types';
 
 function loadConfig(content: string): BatectConfig {
-  const config = safeLoad(content);
+  const config = load(content);
 
   if (typeof config !== 'object') {
     throw new Error(
@@ -46,15 +53,18 @@ function extractImageDependencies(config: BatectConfig): PackageDependency[] {
   return deps;
 }
 
+function includeIsGitInclude(
+  include: BatectInclude
+): include is BatectGitInclude {
+  return typeof include === 'object' && include.type === 'git';
+}
+
 function extractGitBundles(config: BatectConfig): BatectGitInclude[] {
   if (config.include === undefined) {
     return [];
   }
 
-  return config.include.filter(
-    (include): include is BatectGitInclude =>
-      typeof include === 'object' && include.type === 'git'
-  );
+  return config.include.filter(includeIsGitInclude);
 }
 
 function createBundleDependency(bundle: BatectGitInclude): PackageDependency {
@@ -62,7 +72,7 @@ function createBundleDependency(bundle: BatectGitInclude): PackageDependency {
     depName: bundle.repo,
     currentValue: bundle.ref,
     versioning: semverVersioning,
-    datasource: gitTagDatasource,
+    datasource: GitTagsDatasource.id,
     commitMessageTopic: 'bundle {{depName}}',
   };
 }
@@ -76,10 +86,40 @@ function extractBundleDependencies(config: BatectConfig): PackageDependency[] {
   return deps;
 }
 
+function includeIsStringFileInclude(include: BatectInclude): include is string {
+  return typeof include === 'string';
+}
+
+function includeIsObjectFileInclude(
+  include: BatectInclude
+): include is BatectFileInclude {
+  return typeof include === 'object' && include.type === 'file';
+}
+
+function extractReferencedConfigFiles(
+  config: BatectConfig,
+  fileName: string
+): string[] {
+  if (config.include === undefined) {
+    return [];
+  }
+
+  const dirName = upath.dirname(fileName);
+
+  const paths = [
+    ...config.include.filter(includeIsStringFileInclude),
+    ...config.include
+      .filter(includeIsObjectFileInclude)
+      .map((include) => include.path),
+  ].filter((p) => p !== undefined && p !== null);
+
+  return paths.map((p) => upath.join(dirName, p));
+}
+
 export function extractPackageFile(
   content: string,
-  fileName?: string
-): PackageFile | null {
+  fileName: string
+): ExtractionResult | null {
   logger.debug({ fileName }, 'batect.extractPackageFile()');
 
   try {
@@ -89,11 +129,12 @@ export function extractPackageFile(
       ...extractBundleDependencies(config),
     ];
 
-    if (deps.length === 0) {
-      return null;
-    }
+    const referencedConfigFiles = extractReferencedConfigFiles(
+      config,
+      fileName
+    );
 
-    return { deps };
+    return { deps, referencedConfigFiles };
   } catch (err) {
     logger.warn(
       { err, fileName },
@@ -102,4 +143,37 @@ export function extractPackageFile(
 
     return null;
   }
+}
+
+export async function extractAllPackageFiles(
+  config: ExtractConfig,
+  packageFiles: string[]
+): Promise<PackageFile[] | null> {
+  const filesToExamine = new Set<string>(packageFiles);
+  const filesAlreadyExamined = new Set<string>();
+  const results: PackageFile[] = [];
+
+  while (filesToExamine.size > 0) {
+    const packageFile = filesToExamine.values().next().value;
+    filesToExamine.delete(packageFile);
+    filesAlreadyExamined.add(packageFile);
+
+    const content = await readLocalFile(packageFile, 'utf8');
+    const result = extractPackageFile(content, packageFile);
+
+    if (result !== null) {
+      result.referencedConfigFiles.forEach((f) => {
+        if (!filesAlreadyExamined.has(f) && !filesToExamine.has(f)) {
+          filesToExamine.add(f);
+        }
+      });
+
+      results.push({
+        packageFile,
+        deps: result.deps,
+      });
+    }
+  }
+
+  return results;
 }

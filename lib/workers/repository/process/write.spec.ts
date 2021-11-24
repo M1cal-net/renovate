@@ -1,6 +1,7 @@
 import { RenovateConfig, getConfig, git, mocked } from '../../../../test/util';
 import * as _branchWorker from '../../branch';
-import { BranchConfig, ProcessBranchResult } from '../../common';
+import { Limit, isLimitReached } from '../../global/limits';
+import { BranchConfig, BranchResult } from '../../types';
 import * as _limits from './limits';
 import { writeUpdates } from './write';
 
@@ -12,6 +13,7 @@ const limits = mocked(_limits);
 branchWorker.processBranch = jest.fn();
 
 limits.getPrsRemaining = jest.fn().mockResolvedValue(99);
+limits.getBranchesRemaining = jest.fn().mockResolvedValue(99);
 
 let config: RenovateConfig;
 beforeEach(() => {
@@ -19,66 +21,49 @@ beforeEach(() => {
   config = getConfig();
 });
 
-describe('workers/repository/write', () => {
+describe('workers/repository/process/write', () => {
   describe('writeUpdates()', () => {
-    it('skips branches blocked by pin', async () => {
-      const branches: BranchConfig[] = [
-        { updateType: 'pin' },
-        { blockedByPin: true },
-        {},
-      ] as never;
-      git.branchExists.mockReturnValueOnce(false);
-      const res = await writeUpdates(config, branches);
-      expect(res).toEqual('done');
-      expect(branchWorker.processBranch).toHaveBeenCalledTimes(2);
-    });
     it('stops after automerge', async () => {
       const branches: BranchConfig[] = [
         {},
         {},
-        { automergeType: 'pr-comment', requiredStatusChecks: null },
+        { automergeType: 'pr-comment', ignoreTests: true },
         {},
         {},
       ] as never;
       git.branchExists.mockReturnValue(true);
-      branchWorker.processBranch.mockResolvedValueOnce(
-        ProcessBranchResult.PrCreated
-      );
-      branchWorker.processBranch.mockResolvedValueOnce(
-        ProcessBranchResult.AlreadyExisted
-      );
-      branchWorker.processBranch.mockResolvedValueOnce(
-        ProcessBranchResult.Automerged
-      );
-      branchWorker.processBranch.mockResolvedValueOnce(
-        ProcessBranchResult.Automerged
-      );
+      branchWorker.processBranch.mockResolvedValueOnce({
+        branchExists: true,
+        result: BranchResult.PrCreated,
+      });
+      branchWorker.processBranch.mockResolvedValueOnce({
+        branchExists: false,
+        result: BranchResult.AlreadyExisted,
+      });
+      branchWorker.processBranch.mockResolvedValueOnce({
+        branchExists: false,
+        result: BranchResult.Automerged,
+      });
+      branchWorker.processBranch.mockResolvedValueOnce({
+        branchExists: false,
+        result: BranchResult.Automerged,
+      });
       const res = await writeUpdates(config, branches);
-      expect(res).toEqual('automerged');
+      expect(res).toBe('automerged');
       expect(branchWorker.processBranch).toHaveBeenCalledTimes(4);
     });
-    it('counts created branches', async () => {
-      const branches: BranchConfig[] = [
-        { res: ProcessBranchResult.Pending, expect: false },
-        { res: ProcessBranchResult.PrLimitReached, expect: true },
-      ] as never;
-      limits.getPrsRemaining.mockResolvedValueOnce(1);
-
-      branches.forEach(({ res, expect: limitReached }) => {
-        branchWorker.processBranch.mockResolvedValueOnce(res);
-        git.branchExists.mockReturnValueOnce(false);
-        git.branchExists.mockReturnValueOnce(!limitReached as never);
+    it('increments branch counter', async () => {
+      const branches: BranchConfig[] = [{}] as never;
+      branchWorker.processBranch.mockResolvedValueOnce({
+        branchExists: true,
+        result: BranchResult.PrCreated,
       });
-
-      await writeUpdates(config, branches);
-
-      branches.forEach((branch) =>
-        expect(branchWorker.processBranch).toHaveBeenCalledWith(
-          branch,
-          branch.expect,
-          false
-        )
-      );
+      git.branchExists.mockReturnValueOnce(false);
+      git.branchExists.mockReturnValueOnce(true);
+      limits.getBranchesRemaining.mockResolvedValueOnce(1);
+      expect(isLimitReached(Limit.Branches)).toBeFalse();
+      await writeUpdates({ config }, branches);
+      expect(isLimitReached(Limit.Branches)).toBeTrue();
     });
   });
 });

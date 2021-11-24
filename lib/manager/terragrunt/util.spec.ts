@@ -1,6 +1,7 @@
-import { TerragruntDependencyTypes, getTerragruntDependencyType } from './util';
+import { TerragruntDependencyTypes } from './common';
+import { getTerragruntDependencyType } from './util';
 
-describe('lib/manager/terragrunt/extract', () => {
+describe('manager/terragrunt/util', () => {
   describe('getTerragruntDependencyType()', () => {
     it('returns TerragruntDependencyTypes.terragrunt', () => {
       expect(getTerragruntDependencyType('terraform')).toBe(

@@ -1,6 +1,72 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
-exports[`manager/npm/extract .extractPackageFile() uses lerna package settings 1`] = `
+exports[`manager/npm/extract/monorepo .extractPackageFile() updates internal packages 1`] = `
+Array [
+  Object {
+    "deps": Array [
+      Object {
+        "depName": "@org/a",
+      },
+      Object {
+        "depName": "@org/b",
+      },
+      Object {
+        "depName": "@org/c",
+      },
+      Object {
+        "depName": "foo",
+      },
+    ],
+    "lernaPackages": Array [
+      "packages/*",
+    ],
+    "managerData": Object {
+      "lernaJsonFile": "lerna.json",
+    },
+    "packageFile": "package.json",
+    "packages": Array [
+      "packages/*",
+    ],
+  },
+  Object {
+    "deps": Array [
+      Object {
+        "depName": "@org/b",
+      },
+      Object {
+        "depName": "@org/c",
+      },
+      Object {
+        "depName": "bar",
+      },
+    ],
+    "lernaClient": undefined,
+    "managerData": Object {
+      "lernaJsonFile": "lerna.json",
+      "yarnZeroInstall": undefined,
+    },
+    "npmLock": undefined,
+    "packageFile": "packages/a/package.json",
+    "packageJsonName": "@org/a",
+    "skipInstalls": undefined,
+    "yarnLock": undefined,
+  },
+  Object {
+    "lernaClient": undefined,
+    "managerData": Object {
+      "lernaJsonFile": "lerna.json",
+      "yarnZeroInstall": undefined,
+    },
+    "npmLock": undefined,
+    "packageFile": "packages/b/package.json",
+    "packageJsonName": "@org/b",
+    "skipInstalls": undefined,
+    "yarnLock": undefined,
+  },
+]
+`;
+
+exports[`manager/npm/extract/monorepo .extractPackageFile() uses lerna package settings 1`] = `
 Array [
   Object {
     "deps": Array [
@@ -19,10 +85,12 @@ Array [
         "depName": "foo",
       },
     ],
-    "lernaDir": ".",
     "lernaPackages": Array [
       "packages/*",
     ],
+    "managerData": Object {
+      "lernaJsonFile": "lerna.json",
+    },
     "packageFile": "package.json",
     "packages": Array [
       "packages/*",
@@ -42,31 +110,41 @@ Array [
       },
     ],
     "lernaClient": undefined,
-    "lernaDir": ".",
+    "managerData": Object {
+      "lernaJsonFile": "lerna.json",
+      "yarnZeroInstall": undefined,
+    },
     "npmLock": undefined,
     "packageFile": "packages/a/package.json",
     "packageJsonName": "@org/a",
+    "skipInstalls": undefined,
     "yarnLock": undefined,
   },
   Object {
     "lernaClient": undefined,
-    "lernaDir": ".",
+    "managerData": Object {
+      "lernaJsonFile": "lerna.json",
+      "yarnZeroInstall": undefined,
+    },
     "npmLock": undefined,
     "packageFile": "packages/b/package.json",
     "packageJsonName": "@org/b",
+    "skipInstalls": undefined,
     "yarnLock": undefined,
   },
 ]
 `;
 
-exports[`manager/npm/extract .extractPackageFile() uses yarn workspaces package settings with lerna 1`] = `
+exports[`manager/npm/extract/monorepo .extractPackageFile() uses yarn workspaces package settings with lerna 1`] = `
 Array [
   Object {
     "lernaClient": "yarn",
-    "lernaDir": ".",
     "lernaPackages": Array [
       "oldpackages/*",
     ],
+    "managerData": Object {
+      "lernaJsonFile": "lerna.json",
+    },
     "packageFile": "package.json",
     "yarnWorkspacesPackages": Array [
       "packages/*",
@@ -74,44 +152,106 @@ Array [
   },
   Object {
     "lernaClient": "yarn",
-    "lernaDir": ".",
+    "managerData": Object {
+      "lernaJsonFile": "lerna.json",
+      "yarnZeroInstall": undefined,
+    },
     "npmLock": undefined,
     "packageFile": "packages/a/package.json",
     "packageJsonName": "@org/a",
+    "skipInstalls": undefined,
     "yarnLock": undefined,
   },
   Object {
     "lernaClient": "yarn",
-    "lernaDir": ".",
+    "managerData": Object {
+      "lernaJsonFile": "lerna.json",
+      "yarnZeroInstall": undefined,
+    },
     "npmLock": undefined,
     "packageFile": "packages/b/package.json",
     "packageJsonName": "@org/b",
+    "skipInstalls": undefined,
     "yarnLock": undefined,
   },
 ]
 `;
 
-exports[`manager/npm/extract .extractPackageFile() uses yarn workspaces package settings without lerna 1`] = `
+exports[`manager/npm/extract/monorepo .extractPackageFile() uses yarn workspaces package settings without lerna 1`] = `
 Array [
   Object {
+    "npmrc": "@org:registry=//registry.some.org
+",
     "packageFile": "package.json",
     "yarnWorkspacesPackages": "packages/*",
   },
   Object {
     "hasYarnWorkspaces": true,
     "lernaClient": undefined,
-    "lernaDir": undefined,
+    "managerData": Object {
+      "lernaJsonFile": undefined,
+      "yarnZeroInstall": undefined,
+    },
     "npmLock": undefined,
+    "npmrc": "@org:registry=//registry.some.org
+",
     "packageFile": "packages/a/package.json",
     "packageJsonName": "@org/a",
+    "skipInstalls": undefined,
     "yarnLock": "yarn.lock",
   },
   Object {
     "lernaClient": undefined,
-    "lernaDir": undefined,
+    "managerData": Object {
+      "lernaJsonFile": undefined,
+      "yarnZeroInstall": undefined,
+    },
     "npmLock": undefined,
     "packageFile": "packages/b/package.json",
     "packageJsonName": "@org/b",
+    "skipInstalls": undefined,
+    "yarnLock": undefined,
+  },
+]
+`;
+
+exports[`manager/npm/extract/monorepo .extractPackageFile() uses yarnZeroInstall and skipInstalls from yarn workspaces package settings 1`] = `
+Array [
+  Object {
+    "managerData": Object {
+      "yarnZeroInstall": true,
+    },
+    "npmrc": "@org:registry=//registry.some.org
+",
+    "packageFile": "package.json",
+    "skipInstalls": false,
+    "yarnWorkspacesPackages": "packages/*",
+  },
+  Object {
+    "hasYarnWorkspaces": true,
+    "lernaClient": undefined,
+    "managerData": Object {
+      "lernaJsonFile": undefined,
+      "yarnZeroInstall": true,
+    },
+    "npmLock": undefined,
+    "npmrc": "@org:registry=//registry.some.org
+",
+    "packageFile": "packages/a/package.json",
+    "packageJsonName": "@org/a",
+    "skipInstalls": false,
+    "yarnLock": "yarn.lock",
+  },
+  Object {
+    "lernaClient": undefined,
+    "managerData": Object {
+      "lernaJsonFile": undefined,
+      "yarnZeroInstall": true,
+    },
+    "npmLock": undefined,
+    "packageFile": "packages/b/package.json",
+    "packageJsonName": "@org/b",
+    "skipInstalls": false,
     "yarnLock": undefined,
   },
 ]

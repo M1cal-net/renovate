@@ -1,8 +1,9 @@
 import * as datasourceGithubTags from '../../datasource/github-tags';
 import { logger } from '../../logger';
 import { SkipReason } from '../../types';
+import { regEx } from '../../util/regex';
 import { isVersion } from '../../versioning/semver';
-import { PackageDependency, PackageFile } from '../common';
+import type { PackageDependency, PackageFile } from '../types';
 
 export function extractPackageFile(content: string): PackageFile | null {
   const deps: PackageDependency[] = [];
@@ -13,17 +14,21 @@ export function extractPackageFile(content: string): PackageFile | null {
     for (let lineNumber = 1; lineNumber <= lines.length; lineNumber += 1) {
       const lineIdx = lineNumber - 1;
       const line = lines[lineIdx];
-      const pluginsSection = /^(?<pluginsIndent>\s*)(-?\s*)plugins:/.exec(line);
+      const pluginsSection = regEx(
+        /^(?<pluginsIndent>\s*)(-?\s*)plugins:/
+      ).exec(line); // TODO #12071
       if (pluginsSection) {
         logger.trace(`Matched plugins on line ${lineNumber}`);
         isPluginsSection = true;
         pluginsIndent = pluginsSection.groups.pluginsIndent;
       } else if (isPluginsSection) {
         logger.debug(`serviceImageLine: "${line}"`);
-        const { currentIndent } = /^(?<currentIndent>\s*)/.exec(line).groups;
-        const depLineMatch = /^\s+(?:-\s+)?(?<depName>[^#]+)#(?<currentValue>[^:]+)/.exec(
+        const { currentIndent } = regEx(/^(?<currentIndent>\s*)/).exec(
           line
-        );
+        ).groups; // TODO #12071
+        const depLineMatch = regEx(
+          /^\s+(?:-\s+)?(?<depName>[^#]+)#(?<currentValue>[^:]+)/
+        ).exec(line); // TODO #12071
         if (currentIndent.length <= pluginsIndent.length) {
           isPluginsSection = false;
           pluginsIndent = '';
@@ -35,13 +40,7 @@ export function extractPackageFile(content: string): PackageFile | null {
           if (depName.startsWith('https://') || depName.startsWith('git@')) {
             logger.debug({ dependency: depName }, 'Skipping git plugin');
             skipReason = SkipReason.GitPlugin;
-          } else if (!isVersion(currentValue)) {
-            logger.debug(
-              { currentValue },
-              'Skipping non-pinned current version'
-            );
-            skipReason = SkipReason.InvalidVersion;
-          } else {
+          } else if (isVersion(currentValue)) {
             const splitName = depName.split('/');
             if (splitName.length === 1) {
               repo = `buildkite-plugins/${depName}-buildkite-plugin`;
@@ -52,8 +51,14 @@ export function extractPackageFile(content: string): PackageFile | null {
                 { dependency: depName },
                 'Something is wrong with buildkite plugin name'
               );
-              skipReason = SkipReason.Unknown;
+              skipReason = SkipReason.InvalidDependencySpecification;
             }
+          } else {
+            logger.debug(
+              { currentValue },
+              'Skipping non-pinned current version'
+            );
+            skipReason = SkipReason.InvalidVersion;
           }
           const dep: PackageDependency = {
             depName,

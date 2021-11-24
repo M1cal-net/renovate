@@ -1,64 +1,57 @@
 import { ExternalHostError } from '../../types/errors/external-host-error';
-import { Http } from '../../util/http';
-import { CachePromise, cacheAble } from '../cache';
-import { GetReleasesConfig, ReleaseResult } from '../common';
+import { Datasource } from '../datasource';
+import type { GetReleasesConfig, ReleaseResult } from '../types';
+import type { CdnjsResponse } from './types';
 
-export const id = 'cdnjs';
+export class CdnJsDatasource extends Datasource {
+  static readonly id = 'cdnjs';
 
-const http = new Http(id);
+  constructor() {
+    super(CdnJsDatasource.id);
+  }
 
-interface CdnjsAsset {
-  version: string;
-  files: string[];
-  sri?: Record<string, string>;
-}
+  override readonly customRegistrySupport = false;
 
-interface CdnjsResponse {
-  homepage?: string;
-  repository?: {
-    type: 'git' | unknown;
-    url?: string;
-  };
-  assets?: CdnjsAsset[];
-}
+  override readonly defaultRegistryUrls = ['https://api.cdnjs.com/'];
 
-async function downloadLibrary(library: string): CachePromise<CdnjsResponse> {
-  const url = `https://api.cdnjs.com/libraries/${library}?fields=homepage,repository,assets`;
-  return { data: (await http.getJson<CdnjsResponse>(url)).body };
-}
+  override readonly caching = true;
 
-export async function getReleases({
-  lookupName,
-}: GetReleasesConfig): Promise<ReleaseResult | null> {
-  // Each library contains multiple assets, so we cache at the library level instead of per-asset
-  const library = lookupName.split('/')[0];
-  try {
-    const { assets, homepage, repository } = await cacheAble({
-      id,
-      lookup: library,
-      cb: downloadLibrary,
-    });
-    if (!assets) {
-      return null;
+  // this.handleErrors will always throw
+
+  async getReleases({
+    lookupName,
+    registryUrl,
+  }: GetReleasesConfig): Promise<ReleaseResult | null> {
+    // Each library contains multiple assets, so we cache at the library level instead of per-asset
+    const library = lookupName.split('/')[0];
+    const url = `${registryUrl}libraries/${library}?fields=homepage,repository,assets`;
+    let result: ReleaseResult;
+    try {
+      const { assets, homepage, repository } = (
+        await this.http.getJson<CdnjsResponse>(url)
+      ).body;
+      if (!assets) {
+        return null;
+      }
+      const assetName = lookupName.replace(`${library}/`, '');
+      const releases = assets
+        .filter(({ files }) => files.includes(assetName))
+        .map(({ version, sri }) => ({ version, newDigest: sri[assetName] }));
+
+      result = { releases };
+
+      if (homepage) {
+        result.homepage = homepage;
+      }
+      if (repository?.url) {
+        result.sourceUrl = repository.url;
+      }
+    } catch (err) {
+      if (err.statusCode !== 404) {
+        throw new ExternalHostError(err);
+      }
+      this.handleGenericErrors(err);
     }
-    const assetName = lookupName.replace(`${library}/`, '');
-    const releases = assets
-      .filter(({ files }) => files.includes(assetName))
-      .map(({ version, sri }) => ({ version, newDigest: sri[assetName] }));
-
-    const result: ReleaseResult = { releases };
-
-    if (homepage) {
-      result.homepage = homepage;
-    }
-    if (repository?.url) {
-      result.sourceUrl = repository.url;
-    }
-    return result;
-  } catch (err) {
-    if (err.statusCode !== 404) {
-      throw new ExternalHostError(err);
-    }
-    throw err;
+    return result || null;
   }
 }

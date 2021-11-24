@@ -1,19 +1,14 @@
-import fs from 'fs-extra';
+import { loadFixture } from '../../../test/util';
 import { smartTruncate } from './pr-body';
 
+const prBody = loadFixture('pr-body.txt');
+
 describe('platform/utils/pr-body', () => {
-  let prBody: string;
-  beforeAll(async () => {
-    prBody = await fs.readFile(
-      'lib/platform/utils/__fixtures__/pr-body.txt',
-      'utf8'
-    );
-  });
   describe('.smartTruncate', () => {
     it('truncates to 1000', () => {
       const body = smartTruncate(prBody, 1000);
       expect(body).toMatchSnapshot();
-      expect(body.length < prBody.length).toEqual(true);
+      expect(body.length < prBody.length).toBe(true);
     });
 
     it('truncates to 300 not smart', () => {
@@ -24,7 +19,7 @@ describe('platform/utils/pr-body', () => {
 
     it('truncates to 10', () => {
       const body = smartTruncate('Lorem ipsum dolor sit amet', 10);
-      expect(body).toEqual('Lorem ipsu');
+      expect(body).toBe('Lorem ipsu');
     });
 
     it('does not truncate', () => {

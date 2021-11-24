@@ -1,16 +1,20 @@
-import { NewValueConfig, VersioningApi } from '../common';
+import { regEx } from '../../util/regex';
+import type { NewValueConfig, VersioningApi } from '../types';
 
 export const id = 'ubuntu';
 export const displayName = 'Ubuntu';
 export const urls = ['https://changelogs.ubuntu.com/meta-release'];
 export const supportsRanges = false;
 
+// #12509
+const temporarilyUnstable = ['22.04'];
+
 // validation
 
 function isValid(input: string): string | boolean | null {
   return (
     typeof input === 'string' &&
-    /^(0[4-5]|[6-9]|[1-9][0-9])\.[0-9][0-9](\.[0-9]{1,2})?$/.test(input)
+    regEx(/^(0[4-5]|[6-9]|[1-9][0-9])\.[0-9][0-9](\.[0-9]{1,2})?$/).test(input)
   );
 }
 
@@ -33,7 +37,10 @@ function isStable(version: string): boolean {
   if (!isValid(version)) {
     return false;
   }
-  return /^\d?[02468]\.04/.test(version);
+  if (temporarilyUnstable.includes(version)) {
+    return false;
+  }
+  return regEx(/^\d?[02468]\.04/).test(version);
 }
 
 // digestion of version
@@ -107,7 +114,7 @@ function minSatisfyingVersion(
 }
 
 function getNewValue(newValueConfig: NewValueConfig): string {
-  return newValueConfig.toVersion;
+  return newValueConfig.newVersion;
 }
 
 function sortVersions(version: string, other: string): number {

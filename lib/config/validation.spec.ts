@@ -1,7 +1,20 @@
+import type { RenovateConfig } from './types';
 import * as configValidation from './validation';
-import { RenovateConfig } from '.';
 
 describe('config/validation', () => {
+  describe('getParentName()', () => {
+    it('ignores encrypted in root', () => {
+      expect(configValidation.getParentName('encrypted')).toBeEmptyString();
+    });
+    it('handles array types', () => {
+      expect(configValidation.getParentName('hostRules[1]')).toBe('hostRules');
+    });
+    it('handles encrypted within array types', () => {
+      expect(configValidation.getParentName('hostRules[0].encrypted')).toBe(
+        'hostRules'
+      );
+    });
+  });
   describe('validateConfig(config)', () => {
     it('returns deprecation warnings', async () => {
       const config = {
@@ -23,19 +36,19 @@ describe('config/validation', () => {
       const config = {
         packageRules: [
           {
-            packageNames: ['foo'],
+            matchPackageNames: ['foo'],
             allowedVersions: '/^2/',
           },
           {
-            packageNames: ['bar'],
+            matchPackageNames: ['bar'],
             allowedVersions: '/***$}{]][/',
           },
           {
-            packageNames: ['baz'],
+            matchPackageNames: ['baz'],
             allowedVersions: '!/^2/',
           },
           {
-            packageNames: ['quack'],
+            matchPackageNames: ['quack'],
             allowedVersions: '!/***$}{]][/',
           },
         ],
@@ -48,20 +61,24 @@ describe('config/validation', () => {
       const config = {
         packageRules: [
           {
-            packageNames: ['foo'],
+            matchPackageNames: ['foo'],
             matchCurrentVersion: '/^2/',
+            enabled: true,
           },
           {
-            packageNames: ['bar'],
+            matchPackageNames: ['bar'],
             matchCurrentVersion: '/***$}{]][/',
+            enabled: true,
           },
           {
-            packageNames: ['baz'],
+            matchPackageNames: ['baz'],
             matchCurrentVersion: '!/^2/',
+            enabled: true,
           },
           {
-            packageNames: ['quack'],
+            matchPackageNames: ['quack'],
             matchCurrentVersion: '!/***$}{]][/',
+            enabled: true,
           },
         ],
       };
@@ -76,8 +93,9 @@ describe('config/validation', () => {
         timezone: 'Asia/Singapore',
         packageRules: [
           {
-            packagePatterns: ['*'],
+            matchPackagePatterns: ['*'],
             excludePackagePatterns: ['abc ([a-z]+) ([a-z]+))'],
+            enabled: true,
           },
         ],
         lockFileMaintenance: {
@@ -96,7 +114,8 @@ describe('config/validation', () => {
       const config = {
         packageRules: [
           {
-            managers: ['foo'],
+            matchManagers: ['foo'],
+            enabled: true,
           },
         ],
       };
@@ -111,7 +130,8 @@ describe('config/validation', () => {
       const config = {
         packageRules: [
           {
-            managers: 'string not an array',
+            matchManagers: 'string not an array',
+            enabled: true,
           },
         ],
       };
@@ -122,10 +142,46 @@ describe('config/validation', () => {
       expect(errors).toHaveLength(2);
       expect(errors).toMatchSnapshot();
     });
+
+    it.each([
+      ['empty configuration', {}],
+      ['configuration with enabledManagers empty', { enabledManagers: [] }],
+      ['single enabled manager', { enabledManagers: ['npm'] }],
+      [
+        'multiple enabled managers',
+        { enabledManagers: ['npm', 'gradle', 'maven'] },
+      ],
+    ])('validates enabled managers for %s', async (_case, config) => {
+      const { warnings, errors } = await configValidation.validateConfig(
+        config
+      );
+      expect(warnings).toHaveLength(0);
+      expect(errors).toHaveLength(0);
+    });
+
+    it.each([
+      ['single not supported manager', { enabledManagers: ['foo'] }],
+      ['multiple not supported managers', { enabledManagers: ['foo', 'bar'] }],
+      [
+        'combined supported and not supported managers',
+        { enabledManagers: ['foo', 'npm', 'gradle', 'maven'] },
+      ],
+    ])(
+      'errors if included not supported enabled managers for %s',
+      async (_case, config) => {
+        const { warnings, errors } = await configValidation.validateConfig(
+          config
+        );
+        expect(warnings).toHaveLength(0);
+        expect(errors).toHaveLength(1);
+        expect(errors).toMatchSnapshot();
+      }
+    );
     it('errors for all types', async () => {
       const config: RenovateConfig = {
         allowedVersions: 'foo',
         enabled: 1 as any,
+        enabledManagers: ['npm'],
         schedule: ['every 15 mins every weekday'],
         timezone: 'Asia',
         labels: 5 as any,
@@ -142,7 +198,7 @@ describe('config/validation', () => {
           },
           'what?' as any,
           {
-            packagePatterns: 'abc ([a-z]+) ([a-z]+))',
+            matchPackagePatterns: 'abc ([a-z]+) ([a-z]+))',
             excludePackagePatterns: ['abc ([a-z]+) ([a-z]+))'],
             enabled: false,
           },
@@ -152,37 +208,38 @@ describe('config/validation', () => {
       const { warnings, errors } = await configValidation.validateConfig(
         config
       );
-      expect(warnings).toHaveLength(0);
+      expect(warnings).toHaveLength(1);
       expect(errors).toMatchSnapshot();
       expect(errors).toHaveLength(12);
     });
     it('selectors outside packageRules array trigger errors', async () => {
       const config = {
-        packageNames: ['angular'],
+        matchPackageNames: ['angular'],
         meteor: {
           packageRules: [
             {
-              packageNames: ['meteor'],
+              matchPackageNames: ['meteor'],
+              enabled: true,
             },
           ],
         },
         docker: {
           minor: {
-            packageNames: ['testPackage'],
+            matchPackageNames: ['testPackage'],
           },
         },
       };
       const { warnings, errors } = await configValidation.validateConfig(
         config
       );
-      expect(warnings).toHaveLength(0);
+      expect(warnings).toHaveLength(2);
       expect(errors).toMatchSnapshot();
       expect(errors).toHaveLength(2);
     });
     it('ignore packageRule nesting validation for presets', async () => {
       const config = {
         description: ['All angular.js packages'],
-        packageNames: [
+        matchPackageNames: [
           'angular',
           'angular-animate',
           'angular-scroll',
@@ -291,6 +348,9 @@ describe('config/validation', () => {
             matchStrings: ['ENV (?<currentValue>.*?)\\s'],
             depNameTemplate: 'foo',
             datasourceTemplate: 'bar',
+            registryUrlTemplate: 'foobar',
+            extractVersionTemplate: '^(?<version>v\\d+\\.\\d+)',
+            depTypeTemplate: 'apple',
           },
         ],
       };
@@ -309,6 +369,7 @@ describe('config/validation', () => {
             matchStrings: ['ENV (?<currentValue>.*?)\\s'],
             depNameTemplate: 'foo',
             datasourceTemplate: 'bar',
+            depTypeTemplate: 'apple',
             automerge: true,
           },
         ],
@@ -399,7 +460,6 @@ describe('config/validation', () => {
       );
       expect(warnings).toHaveLength(0);
       expect(errors).toHaveLength(0);
-      expect(errors).toMatchSnapshot();
     });
 
     it('errors if aliases depth is more than 1', async () => {
@@ -414,8 +474,13 @@ describe('config/validation', () => {
         config
       );
       expect(warnings).toHaveLength(0);
-      expect(errors).toHaveLength(1);
-      expect(errors).toMatchSnapshot();
+      expect(errors).toMatchObject([
+        {
+          message:
+            'Invalid `aliases.aliases.sample` configuration: value is not a url',
+          topic: 'Configuration Error',
+        },
+      ]);
     });
 
     it('errors if aliases have invalid url', async () => {
@@ -429,8 +494,13 @@ describe('config/validation', () => {
         config
       );
       expect(warnings).toHaveLength(0);
-      expect(errors).toHaveLength(1);
-      expect(errors).toMatchSnapshot();
+      expect(errors).toMatchObject([
+        {
+          message:
+            'Invalid `aliases.aliases.example1` configuration: value is not a url',
+          topic: 'Configuration Error',
+        },
+      ]);
     });
 
     it('errors if fileMatch has wrong parent', async () => {
@@ -438,7 +508,7 @@ describe('config/validation', () => {
         fileMatch: ['foo'],
         npm: {
           fileMatch: ['package\\.json'],
-          gradle: {
+          minor: {
             fileMatch: ['bar'],
           },
         },
@@ -460,6 +530,44 @@ describe('config/validation', () => {
       expect(warnings).toMatchSnapshot();
     });
 
+    it('errors if language or manager objects are nested', async () => {
+      const config = {
+        python: {
+          enabled: false,
+        },
+        java: {
+          gradle: {
+            enabled: false,
+          },
+        },
+        major: {
+          minor: {
+            docker: {
+              automerge: true,
+            },
+          },
+        },
+      } as never;
+      const { warnings, errors } = await configValidation.validateConfig(
+        config
+      );
+      expect(errors).toHaveLength(2);
+      expect(warnings).toHaveLength(0);
+      expect(errors).toMatchSnapshot();
+    });
+
+    it('warns if hostType has the wrong parent', async () => {
+      const config = {
+        hostType: 'npm',
+      };
+      const { warnings, errors } = await configValidation.validateConfig(
+        config
+      );
+      expect(errors).toHaveLength(0);
+      expect(warnings).toHaveLength(1);
+      expect(warnings).toMatchSnapshot();
+    });
+
     it('validates preset values', async () => {
       const config = {
         extends: ['foo', 'bar', 42] as never,
@@ -470,6 +578,88 @@ describe('config/validation', () => {
       );
       expect(warnings).toHaveLength(0);
       expect(errors).toHaveLength(1);
+    });
+
+    it('warns if only selectors in packageRules', async () => {
+      const config = {
+        packageRules: [
+          { matchDepTypes: ['foo'], excludePackageNames: ['bar'] },
+        ],
+      };
+      const { warnings, errors } = await configValidation.validateConfig(
+        config,
+        true
+      );
+      expect(warnings).toHaveLength(1);
+      expect(warnings).toMatchSnapshot();
+      expect(errors).toHaveLength(0);
+    });
+    it('errors if invalid combinations in packageRules', async () => {
+      const config = {
+        packageRules: [
+          {
+            matchUpdateTypes: ['major'],
+            registryUrls: ['https://registry.npmjs.org'],
+          },
+        ],
+      } as any;
+      const { warnings, errors } = await configValidation.validateConfig(
+        config,
+        true
+      );
+      expect(warnings).toHaveLength(0);
+      expect(errors).toHaveLength(1);
+      expect(errors).toMatchSnapshot();
+    });
+    it('warns on nested group packageRules', async () => {
+      const config = {
+        extends: ['group:fortawesome'],
+        packageRules: [
+          {
+            automerge: true,
+            extends: ['group:fortawesome'],
+          },
+        ],
+      };
+      const { warnings, errors } = await configValidation.validateConfig(
+        config,
+        true
+      );
+      expect(errors).toHaveLength(0);
+      expect(warnings).toHaveLength(1);
+    });
+
+    it('validates valid customEnvVariables objects', async () => {
+      const config = {
+        customEnvVariables: {
+          example1: 'abc',
+          example2: 'https://www.example2.com/example',
+        },
+      };
+      const { warnings, errors } = await configValidation.validateConfig(
+        config
+      );
+      expect(warnings).toHaveLength(0);
+      expect(errors).toHaveLength(0);
+    });
+    it('errors on invalid customEnvVariables objects', async () => {
+      const config = {
+        customEnvVariables: {
+          example1: 'abc',
+          example2: 123,
+        },
+      };
+      const { warnings, errors } = await configValidation.validateConfig(
+        config
+      );
+      expect(warnings).toHaveLength(0);
+      expect(errors).toMatchObject([
+        {
+          message:
+            'Invalid `customEnvVariables.customEnvVariables.example2` configuration: value is not a string',
+          topic: 'Configuration Error',
+        },
+      ]);
     });
   });
 });

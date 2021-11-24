@@ -1,131 +1,43 @@
-import url from 'url';
-import fs from 'fs-extra';
-import pAll from 'p-all';
+import pMap from 'p-map';
 import { XmlDocument } from 'xmldoc';
 import { logger } from '../../logger';
 import * as packageCache from '../../util/cache/package';
 import mavenVersion from '../../versioning/maven';
+import * as mavenVersioning from '../../versioning/maven';
 import { compare } from '../../versioning/maven/compare';
-import { GetReleasesConfig, Release, ReleaseResult } from '../common';
+import type { GetReleasesConfig, Release, ReleaseResult } from '../types';
 import { MAVEN_REPO } from './common';
-import { downloadHttpProtocol, isHttpResourceExists } from './util';
+import type {
+  ArtifactInfoResult,
+  ArtifactsInfo,
+  MavenDependency,
+} from './types';
+import {
+  downloadMavenXml,
+  getDependencyInfo,
+  getDependencyParts,
+  getMavenUrl,
+  isHttpResourceExists,
+} from './util';
 
 export { id } from './common';
 
+export const customRegistrySupport = true;
 export const defaultRegistryUrls = [MAVEN_REPO];
+export const defaultVersioning = mavenVersioning.id;
 export const registryStrategy = 'merge';
-
-function containsPlaceholder(str: string): boolean {
-  return /\${.*?}/g.test(str);
-}
-
-async function downloadFileProtocol(pkgUrl: url.URL): Promise<string | null> {
-  const pkgPath = pkgUrl.toString().replace('file://', '');
-  if (!(await fs.exists(pkgPath))) {
-    return null;
-  }
-  return fs.readFile(pkgPath, 'utf8');
-}
-
-function getMavenUrl(
-  dependency: MavenDependency,
-  repoUrl: string,
-  path: string
-): url.URL | null {
-  return new url.URL(`${dependency.dependencyUrl}/${path}`, repoUrl);
-}
-
-async function downloadMavenXml(
-  pkgUrl: url.URL | null
-): Promise<XmlDocument | null> {
-  /* istanbul ignore if */
-  if (!pkgUrl) {
-    return null;
-  }
-  let rawContent: string;
-  switch (pkgUrl.protocol) {
-    case 'file:':
-      rawContent = await downloadFileProtocol(pkgUrl);
-      break;
-    case 'http:':
-    case 'https:':
-      rawContent = await downloadHttpProtocol(pkgUrl);
-      break;
-    case 's3:':
-      logger.debug('Skipping s3 dependency');
-      return null;
-    default:
-      logger.debug({ url: pkgUrl.toString() }, `Unsupported Maven protocol`);
-      return null;
-  }
-
-  if (!rawContent) {
-    logger.debug(`Content is not found for Maven url: ${pkgUrl.toString()}`);
-    return null;
-  }
-
-  return new XmlDocument(rawContent);
-}
-
-async function getDependencyInfo(
-  dependency: MavenDependency,
-  repoUrl: string,
-  version: string
-): Promise<Partial<ReleaseResult>> {
-  const result: Partial<ReleaseResult> = {};
-  const path = `${version}/${dependency.name}-${version}.pom`;
-
-  const pomUrl = getMavenUrl(dependency, repoUrl, path);
-  const pomContent = await downloadMavenXml(pomUrl);
-  if (!pomContent) {
-    return result;
-  }
-
-  const homepage = pomContent.valueWithPath('url');
-  if (homepage && !containsPlaceholder(homepage)) {
-    result.homepage = homepage;
-  }
-
-  const sourceUrl = pomContent.valueWithPath('scm.url');
-  if (sourceUrl && !containsPlaceholder(sourceUrl)) {
-    result.sourceUrl = sourceUrl.replace(/^scm:/, '');
-  }
-
-  return result;
-}
 
 function isStableVersion(x: string): boolean {
   return mavenVersion.isStable(x);
 }
 
-function getLatestStableVersion(releases: Release[]): string | null {
-  const stableVersions = releases
+function getLatestStableVersion(releases: Release[]): string | undefined {
+  return releases
     .map(({ version }) => version)
-    .filter(isStableVersion);
-  if (stableVersions.length) {
-    return stableVersions.reduce((latestVersion, version) =>
+    .filter(isStableVersion)
+    .reduce((latestVersion, version) =>
       compare(version, latestVersion) === 1 ? version : latestVersion
     );
-  }
-  return null;
-}
-
-interface MavenDependency {
-  display: string;
-  group?: string;
-  name?: string;
-  dependencyUrl: string;
-}
-
-function getDependencyParts(lookupName: string): MavenDependency {
-  const [group, name] = lookupName.split(':');
-  const dependencyUrl = `${group.replace(/\./g, '/')}/${name}`;
-  return {
-    display: lookupName,
-    group,
-    name,
-    dependencyUrl,
-  };
 }
 
 function extractVersions(metadata: XmlDocument): string[] {
@@ -154,17 +66,19 @@ async function getVersionsFromMetadata(
     return cachedVersions;
   }
 
-  const mavenMetadata = await downloadMavenXml(metadataUrl);
+  const { authorization, xml: mavenMetadata } = await downloadMavenXml(
+    metadataUrl
+  );
   if (!mavenMetadata) {
     return null;
   }
 
   const versions = extractVersions(mavenMetadata);
-  await packageCache.set(cacheNamespace, cacheKey, versions, 30);
+  if (!authorization) {
+    await packageCache.set(cacheNamespace, cacheKey, versions, 30);
+  }
   return versions;
 }
-
-type ArtifactsInfo = Record<string, boolean | null>;
 
 // istanbul ignore next
 function isValidArtifactsInfo(
@@ -177,47 +91,115 @@ function isValidArtifactsInfo(
   return versions.every((v) => info[v] !== undefined);
 }
 
-type ArtifactInfoResult = [string, boolean | string | null];
-
-async function getArtifactInfo(
-  version: string,
-  artifactUrl: url.URL
-): Promise<ArtifactInfoResult> {
-  const proto = artifactUrl.protocol;
-  if (proto === 'http:' || proto === 'https:') {
-    const result = await isHttpResourceExists(artifactUrl);
-    return [version, result];
+function isSnapshotVersion(version: string): boolean {
+  if (version.endsWith('-SNAPSHOT')) {
+    return true;
   }
-  return [version, true];
+  return false;
 }
 
-async function filterMissingArtifacts(
+function extractSnapshotVersion(metadata: XmlDocument): string | null {
+  // Parse the maven-metadata.xml for the snapshot version and determine
+  // the fixed version of the latest deployed snapshot.
+  // The metadata descriptor can be found at
+  // https://maven.apache.org/ref/3.3.3/maven-repository-metadata/repository-metadata.html
+  //
+  // Basically, we need to replace -SNAPSHOT with the artifact timestanp & build number,
+  // so for example 1.0.0-SNAPSHOT will become 1.0.0-<timestamp>-<buildNumber>
+  const version = metadata
+    .descendantWithPath('version')
+    ?.val?.replace('-SNAPSHOT', '');
+
+  const snapshot = metadata.descendantWithPath('versioning.snapshot');
+  const timestamp = snapshot?.childNamed('timestamp')?.val;
+  const build = snapshot?.childNamed('buildNumber')?.val;
+
+  // If we weren't able to parse out the required 3 version elements,
+  // return null because we can't determine the fixed version of the latest snapshot.
+  if (!version || !timestamp || !build) {
+    return null;
+  }
+  return `${version}-${timestamp}-${build}`;
+}
+
+async function getSnapshotFullVersion(
+  version: string,
+  dependency: MavenDependency,
+  repoUrl: string
+): Promise<string | null> {
+  // To determine what actual files are available for the snapshot, first we have to fetch and parse
+  // the metadata located at http://<repo>/<group>/<artifact>/<version-SNAPSHOT>/maven-metadata.xml
+  const metadataUrl = getMavenUrl(
+    dependency,
+    repoUrl,
+    `${version}/maven-metadata.xml`
+  );
+
+  const { xml: mavenMetadata } = await downloadMavenXml(metadataUrl);
+  if (!mavenMetadata) {
+    return null;
+  }
+
+  return extractSnapshotVersion(mavenMetadata);
+}
+
+async function createUrlForDependencyPom(
+  version: string,
+  dependency: MavenDependency,
+  repoUrl: string
+): Promise<string> {
+  if (isSnapshotVersion(version)) {
+    // By default, Maven snapshots are deployed to the repository with fixed file names.
+    // Resolve the full, actual pom file name for the version.
+    const fullVersion = await getSnapshotFullVersion(
+      version,
+      dependency,
+      repoUrl
+    );
+
+    // If we were able to resolve the version, use that, otherwise fall back to using -SNAPSHOT
+    if (fullVersion !== null) {
+      return `${version}/${dependency.name}-${fullVersion}.pom`;
+    }
+  }
+
+  return `${version}/${dependency.name}-${version}.pom`;
+}
+
+async function getReleasesFromHeadRequests(
   dependency: MavenDependency,
   repoUrl: string,
   versions: string[]
-): Promise<Release[]> {
+): Promise<Release[] | null> {
+  if (process.env.RENOVATE_EXPERIMENTAL_NO_MAVEN_POM_CHECK) {
+    return null;
+  }
+
   const cacheNamespace = 'datasource-maven-metadata';
   const cacheKey = `${repoUrl}${dependency.dependencyUrl}`;
-  let artifactsInfo: ArtifactsInfo | null = await packageCache.get<ArtifactsInfo>(
-    cacheNamespace,
-    cacheKey
-  );
+  let artifactsInfo: ArtifactsInfo | null =
+    await packageCache.get<ArtifactsInfo>(cacheNamespace, cacheKey);
 
+  // If the cache contains any artifacts that we were previously unable to determine if they exist,
+  // retry the existence checks on them.
   if (!isValidArtifactsInfo(artifactsInfo, versions)) {
-    const queue = versions
-      .map((version): [string, url.URL | null] => {
+    // For each version, determine if there is a POM file available for it
+    const results: ArtifactInfoResult[] = await pMap(
+      versions,
+      async (version): Promise<ArtifactInfoResult | null> => {
+        // Create the URL that the POM file should be available at
         const artifactUrl = getMavenUrl(
           dependency,
           repoUrl,
-          `${version}/${dependency.name}-${version}.pom`
+          await createUrlForDependencyPom(version, dependency, repoUrl)
         );
-        return [version, artifactUrl];
-      })
-      .filter(([_, artifactUrl]) => Boolean(artifactUrl))
-      .map(([version, artifactUrl]) => (): Promise<ArtifactInfoResult> =>
-        getArtifactInfo(version, artifactUrl)
-      );
-    const results = await pAll(queue, { concurrency: 5 });
+
+        // Return an ArtifactInfoResult that maps the version to the result of the check if the POM file exists in the repo
+        return [version, await isHttpResourceExists(artifactUrl)];
+      },
+      { concurrency: 5 }
+    );
+
     artifactsInfo = results.reduce(
       (acc, [key, value]) => ({
         ...acc,
@@ -234,6 +216,7 @@ async function filterMissingArtifacts(
     await packageCache.set(cacheNamespace, cacheKey, artifactsInfo, cacheTTL);
   }
 
+  // Create releases for every version that exists in the repository
   return versions
     .filter((v) => artifactsInfo[v])
     .map((version) => {
@@ -246,49 +229,38 @@ async function filterMissingArtifacts(
     });
 }
 
+function getFallbackReleases(versions: string[]): Release[] | null {
+  const result = versions?.map((version) => ({
+    version,
+  }));
+  return result ?? null;
+}
+
 export async function getReleases({
   lookupName,
   registryUrl,
 }: GetReleasesConfig): Promise<ReleaseResult | null> {
   const dependency = getDependencyParts(lookupName);
-  let releases: Release[] = null;
-  const repoForVersions = {};
-  const repoUrl = registryUrl.replace(/\/?$/, '/');
+  const repoUrl = registryUrl.replace(/\/?$/, '/'); // TODO #12070
+
   logger.debug(`Looking up ${dependency.display} in repository ${repoUrl}`);
-  const metadataVersions = await getVersionsFromMetadata(dependency, repoUrl);
-  if (metadataVersions) {
-    if (!process.env.RENOVATE_EXPERIMENTAL_NO_MAVEN_POM_CHECK) {
-      releases = await filterMissingArtifacts(
-        dependency,
-        repoUrl,
-        metadataVersions
-      );
-    }
 
-    /* istanbul ignore next */
-    releases = releases || metadataVersions.map((version) => ({ version }));
-
-    const latestVersion = getLatestStableVersion(releases);
-    if (latestVersion) {
-      repoForVersions[latestVersion] = repoUrl;
-    }
-
-    logger.debug(`Found ${releases.length} new releases for ${dependency.display} in repository ${repoUrl}`); // prettier-ignore
-  }
+  let releases: Release[] = null;
+  const versions = await getVersionsFromMetadata(dependency, repoUrl);
+  releases ||= await getReleasesFromHeadRequests(dependency, repoUrl, versions);
+  releases ||= getFallbackReleases(versions);
 
   if (!releases?.length) {
     return null;
   }
+  logger.debug(
+    `Found ${releases.length} new releases for ${dependency.display} in repository ${repoUrl}`
+  );
 
-  let dependencyInfo = {};
-  const latestVersion = getLatestStableVersion(releases);
-  if (latestVersion) {
-    dependencyInfo = await getDependencyInfo(
-      dependency,
-      repoForVersions[latestVersion],
-      latestVersion
-    );
-  }
+  const latestStableVersion = getLatestStableVersion(releases);
+  const dependencyInfo =
+    latestStableVersion &&
+    (await getDependencyInfo(dependency, repoUrl, latestStableVersion));
 
   return {
     ...dependency,

@@ -1,4 +1,4 @@
-import { readFileSync } from 'fs';
+import { loadFixture } from '../../../test/util';
 import {
   extractContainer,
   extractPackageFile,
@@ -6,19 +6,12 @@ import {
   parseAzurePipelines,
 } from './extract';
 
-const azurePipelines = readFileSync(
-  'lib/manager/azure-pipelines/__fixtures__/azure-pipelines.yaml',
-  'utf8'
-);
+const azurePipelines = loadFixture('azure-pipelines.yaml');
 
-const azurePipelinesInvalid = readFileSync(
-  'lib/manager/azure-pipelines/__fixtures__/azure-pipelines-invalid.yaml',
-  'utf8'
-);
+const azurePipelinesInvalid = loadFixture('azure-pipelines-invalid.yaml');
 
-const azurePipelinesNoDependency = readFileSync(
-  'lib/manager/azure-pipelines/__fixtures__/azure-pipelines-no-dependency.yaml',
-  'utf8'
+const azurePipelinesNoDependency = loadFixture(
+  'azure-pipelines-no-dependency.yaml'
 );
 
 describe('manager/azure-pipelines/extract', () => {
@@ -40,7 +33,10 @@ describe('manager/azure-pipelines/extract', () => {
           name: 'user/repo',
           ref: 'refs/tags/v1.0.0',
         })
-      ).toMatchSnapshot();
+      ).toMatchSnapshot({
+        depName: 'user/repo',
+        lookupName: 'https://github.com/user/repo.git',
+      });
     });
 
     it('should return null when repository type is not github', () => {
@@ -80,7 +76,11 @@ describe('manager/azure-pipelines/extract', () => {
         extractContainer({
           image: 'ubuntu:16.04',
         })
-      ).toMatchSnapshot();
+      ).toMatchSnapshot({
+        depName: 'ubuntu',
+        currentValue: '16.04',
+        datasource: 'docker',
+      });
     });
     it('should return null if image field is missing', () => {
       expect(extractContainer({ image: null })).toBeNull();

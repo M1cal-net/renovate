@@ -1,7 +1,8 @@
 import * as datasourceMaven from './maven';
 import { addMetaData } from './metadata';
 import * as datasourceNpm from './npm';
-import * as datasourcePypi from './pypi';
+import { PypiDatasource } from './pypi';
+import type { ReleaseResult } from './types';
 
 describe('datasource/metadata', () => {
   it('Should do nothing if dep is not specified', () => {
@@ -9,73 +10,80 @@ describe('datasource/metadata', () => {
   });
 
   it('Should handle manualChangelogUrls', () => {
-    const dep = {
+    const dep: ReleaseResult = {
       releases: [
-        { version: '2.0.0', releaseTimestamp: '2018-07-13T10:14:17' },
+        { version: '2.0.0', releaseTimestamp: '2018-07-13T10:14:17.000Z' },
         {
           version: '2.0.0.dev1',
-          releaseTimestamp: '2017-10-24T10:09:16',
+          releaseTimestamp: '2017-10-24T10:09:16.000Z',
         },
-        { version: '2.1.0', releaseTimestamp: '2019-01-20T19:59:28' },
-        { version: '2.2.0', releaseTimestamp: '2019-07-16T18:29:00' },
+        { version: '2.1.0', releaseTimestamp: '2019-01-20T19:59:28.000Z' },
+        { version: '2.2.0', releaseTimestamp: '2019-07-16T18:29:00.000Z' },
       ],
     };
 
-    const datasource = datasourcePypi.id;
+    const datasource = PypiDatasource.id;
     const lookupName = 'django';
 
     addMetaData(dep, datasource, lookupName);
-    expect(dep).toMatchSnapshot();
+    expect(dep).toMatchSnapshot({
+      changelogUrl:
+        'https://github.com/django/django/tree/master/docs/releases',
+    });
   });
 
   it('Should handle manualSourceUrls', () => {
-    const dep = {
+    const dep: ReleaseResult = {
       releases: [
-        { version: '2.0.0', releaseTimestamp: '2018-07-13T10:14:17' },
+        { version: '2.0.0', releaseTimestamp: '2018-07-13T10:14:17.000Z' },
         {
           version: '2.0.0.dev1',
-          releaseTimestamp: '2017-10-24T10:09:16',
+          releaseTimestamp: '2017-10-24T10:09:16.000Z',
         },
-        { version: '2.1.0', releaseTimestamp: '2019-01-20T19:59:28' },
-        { version: '2.2.0', releaseTimestamp: '2019-07-16T18:29:00' },
+        { version: '2.1.0', releaseTimestamp: '2019-01-20T19:59:28.000Z' },
+        { version: '2.2.0', releaseTimestamp: '2019-07-16T18:29:00.000Z' },
       ],
     };
 
-    const datasource = datasourcePypi.id;
+    const datasource = PypiDatasource.id;
     const lookupName = 'mkdocs';
 
     addMetaData(dep, datasource, lookupName);
-    expect(dep).toMatchSnapshot();
+    expect(dep).toMatchSnapshot({
+      sourceUrl: 'https://github.com/mkdocs/mkdocs',
+    });
   });
 
   it('Should handle parsing of sourceUrls correctly', () => {
-    const dep = {
+    const dep: ReleaseResult = {
       sourceUrl: 'https://github.com/carltongibson/django-filter/tree/master',
       releases: [
-        { version: '2.0.0', releaseTimestamp: '2018-07-13T10:14:17' },
+        { version: '2.0.0', releaseTimestamp: '2018-07-13T10:14:17.000Z' },
         {
           version: '2.0.0.dev1',
-          releaseTimestamp: '2017-10-24T10:09:16',
+          releaseTimestamp: '2017-10-24T10:09:16.000Z',
         },
-        { version: '2.1.0', releaseTimestamp: '2019-01-20T19:59:28' },
-        { version: '2.2.0', releaseTimestamp: '2019-07-16T18:29:00' },
+        { version: '2.1.0', releaseTimestamp: '2019-01-20T19:59:28.000Z' },
+        { version: '2.2.0', releaseTimestamp: '2019-07-16T18:29:00.000Z' },
       ],
     };
-    const datasource = datasourcePypi.id;
+    const datasource = PypiDatasource.id;
     const lookupName = 'django-filter';
 
     addMetaData(dep, datasource, lookupName);
-    expect(dep).toMatchSnapshot();
+    expect(dep).toMatchSnapshot({
+      sourceUrl: 'https://github.com/carltongibson/django-filter',
+    });
   });
 
   it('Should handle parsing of sourceUrls correctly for GitLab also', () => {
-    const dep = {
+    const dep: ReleaseResult = {
       sourceUrl: 'https://gitlab.com/meno/dropzone/tree/master',
       releases: [
-        { version: '5.7.0', releaseTimestamp: '2020-02-14T13:12:00' },
+        { version: '5.7.0', releaseTimestamp: '2020-02-14T13:12:00.000Z' },
         {
           version: '5.6.1',
-          releaseTimestamp: '2020-02-14T10:04:00',
+          releaseTimestamp: '2020-02-14T10:04:00.000Z',
         },
       ],
     };
@@ -83,16 +91,18 @@ describe('datasource/metadata', () => {
     const lookupName = 'dropzone';
 
     addMetaData(dep, datasource, lookupName);
-    expect(dep).toMatchSnapshot();
+    expect(dep).toMatchSnapshot({
+      sourceUrl: 'https://gitlab.com/meno/dropzone',
+    });
   });
   it('Should handle failed parsing of sourceUrls for GitLab', () => {
     const dep = {
       sourceUrl: 'https://gitlab-nope',
       releases: [
-        { version: '5.7.0', releaseTimestamp: '2020-02-14T13:12:00' },
+        { version: '5.7.0', releaseTimestamp: '2020-02-14T13:12:00.000Z' },
         {
           version: '5.6.1',
-          releaseTimestamp: '2020-02-14T10:04:00',
+          releaseTimestamp: '2020-02-14T10:04:00.000Z',
         },
       ],
     };
@@ -100,16 +110,18 @@ describe('datasource/metadata', () => {
     const lookupName = 'dropzone';
 
     addMetaData(dep, datasource, lookupName);
-    expect(dep).toMatchSnapshot();
+    expect(dep).toMatchSnapshot({
+      sourceUrl: 'https://gitlab-nope',
+    });
   });
   it('Should handle failed parsing of sourceUrls for other', () => {
     const dep = {
       sourceUrl: 'https://nope-nope-nope',
       releases: [
-        { version: '5.7.0', releaseTimestamp: '2020-02-14T13:12:00' },
+        { version: '5.7.0', releaseTimestamp: '2020-02-14T13:12:00.000Z' },
         {
           version: '5.6.1',
-          releaseTimestamp: '2020-02-14T10:04:00',
+          releaseTimestamp: '2020-02-14T10:04:00.000Z',
         },
       ],
     };
@@ -117,16 +129,18 @@ describe('datasource/metadata', () => {
     const lookupName = 'dropzone';
 
     addMetaData(dep, datasource, lookupName);
-    expect(dep).toMatchSnapshot();
+    expect(dep).toMatchSnapshot({
+      sourceUrl: 'https://nope-nope-nope',
+    });
   });
   it('Should handle non-url', () => {
     const dep = {
       sourceUrl: 'not-a-url',
       releases: [
-        { version: '5.7.0', releaseTimestamp: '2020-02-14T13:12:00' },
+        { version: '5.7.0', releaseTimestamp: '2020-02-14T13:12:00.000Z' },
         {
           version: '5.6.1',
-          releaseTimestamp: '2020-02-14T10:04:00',
+          releaseTimestamp: '2020-02-14T10:04:00.000Z',
         },
       ],
     };
@@ -134,6 +148,7 @@ describe('datasource/metadata', () => {
     const lookupName = 'dropzone';
 
     addMetaData(dep, datasource, lookupName);
+    expect(dep).not.toContainKey('sourceUrl');
     expect(dep).toMatchSnapshot();
   });
 
@@ -146,7 +161,7 @@ describe('datasource/metadata', () => {
     const lookupName = 'io.mockk:mockk';
 
     addMetaData(dep, datasource, lookupName);
-    expect(dep.sourceUrl).toEqual('https://github.com/mockk/mockk');
+    expect(dep.sourceUrl).toBe('https://github.com/mockk/mockk');
   });
 
   it('Should move github homepage to sourceUrl', () => {
@@ -159,7 +174,7 @@ describe('datasource/metadata', () => {
     const lookupName = 'io.mockk:mockk';
 
     addMetaData(dep, datasource, lookupName);
-    expect(dep.sourceUrl).toEqual('https://github.com/mockk/mockk');
+    expect(dep.sourceUrl).toBe('https://github.com/mockk/mockk');
     expect(dep.homepage).toBeUndefined();
   });
 
@@ -172,6 +187,22 @@ describe('datasource/metadata', () => {
     const lookupName = 'dropzone';
 
     addMetaData(dep, datasource, lookupName);
-    expect(dep.sourceUrl).toEqual('https://gitlab.com/meno/dropzone');
+    expect(dep.sourceUrl).toBe('https://gitlab.com/meno/dropzone');
+  });
+
+  it('Should normalize releaseTimestamp', () => {
+    const dep = {
+      releases: [
+        { version: '1.0.1', releaseTimestamp: '2000-01-01T12:34:56' },
+        { version: '1.0.2', releaseTimestamp: '2000-01-02T12:34:56.000Z' },
+        { version: '1.0.3', releaseTimestamp: '2000-01-03T14:34:56.000+02:00' },
+      ],
+    };
+    addMetaData(dep, datasourceMaven.id, 'foobar');
+    expect(dep.releases).toMatchObject([
+      { releaseTimestamp: '2000-01-01T12:34:56.000Z' },
+      { releaseTimestamp: '2000-01-02T12:34:56.000Z' },
+      { releaseTimestamp: '2000-01-03T12:34:56.000Z' },
+    ]);
   });
 });

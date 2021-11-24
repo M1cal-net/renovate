@@ -1,9 +1,9 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
-exports[`datasource/orb getReleases processes homeUrl 1`] = `
+exports[`datasource/orb/index getReleases processes homeUrl 1`] = `
 Object {
   "homepage": "https://google.com",
-  "name": "hyper-expanse/library-release-workflows",
+  "registryUrl": "https://circleci.com/",
   "releases": Array [
     Object {
       "releaseTimestamp": "2018-12-11T05:28:14.080Z",
@@ -46,18 +46,20 @@ Object {
       "version": "4.2.0",
     },
   ],
-  "versions": Object {},
 }
 `;
 
-exports[`datasource/orb getReleases processes homeUrl 2`] = `
+exports[`datasource/orb/index getReleases processes homeUrl 2`] = `
 Array [
   Object {
     "graphql": Object {
       "query": Object {
+        "__vars": Object {
+          "$lookupName": "String!",
+        },
         "orb": Object {
           "__args": Object {
-            "name": "hyper-expanse/library-release-workflows",
+            "name": "$lookupName",
           },
           "homeUrl": null,
           "name": null,
@@ -67,14 +69,17 @@ Array [
           },
         },
       },
+      "variables": Object {
+        "lookupName": "hyper-expanse/library-release-workflows",
+      },
     },
     "headers": Object {
       "accept": "application/json",
-      "accept-encoding": "gzip, deflate",
-      "content-length": "128",
+      "accept-encoding": "gzip, deflate, br",
+      "content-length": "231",
       "content-type": "application/json",
       "host": "circleci.com",
-      "user-agent": "https://github.com/renovatebot/renovate",
+      "user-agent": "RenovateBot/0.0.0-semantic-release (https://github.com/renovatebot/renovate)",
     },
     "method": "POST",
     "url": "https://circleci.com/graphql-unstable",
@@ -82,10 +87,10 @@ Array [
 ]
 `;
 
-exports[`datasource/orb getReleases processes real data 1`] = `
+exports[`datasource/orb/index getReleases processes real data 1`] = `
 Object {
   "homepage": "https://circleci.com/developer/orbs/orb/hyper-expanse/library-release-workflows",
-  "name": "hyper-expanse/library-release-workflows",
+  "registryUrl": "https://circleci.com/",
   "releases": Array [
     Object {
       "releaseTimestamp": "2018-12-11T05:28:14.080Z",
@@ -128,18 +133,20 @@ Object {
       "version": "4.2.0",
     },
   ],
-  "versions": Object {},
 }
 `;
 
-exports[`datasource/orb getReleases processes real data 2`] = `
+exports[`datasource/orb/index getReleases processes real data 2`] = `
 Array [
   Object {
     "graphql": Object {
       "query": Object {
+        "__vars": Object {
+          "$lookupName": "String!",
+        },
         "orb": Object {
           "__args": Object {
-            "name": "hyper-expanse/library-release-workflows",
+            "name": "$lookupName",
           },
           "homeUrl": null,
           "name": null,
@@ -149,14 +156,17 @@ Array [
           },
         },
       },
+      "variables": Object {
+        "lookupName": "hyper-expanse/library-release-workflows",
+      },
     },
     "headers": Object {
       "accept": "application/json",
-      "accept-encoding": "gzip, deflate",
-      "content-length": "128",
+      "accept-encoding": "gzip, deflate, br",
+      "content-length": "231",
       "content-type": "application/json",
       "host": "circleci.com",
-      "user-agent": "https://github.com/renovatebot/renovate",
+      "user-agent": "RenovateBot/0.0.0-semantic-release (https://github.com/renovatebot/renovate)",
     },
     "method": "POST",
     "url": "https://circleci.com/graphql-unstable",
@@ -164,14 +174,17 @@ Array [
 ]
 `;
 
-exports[`datasource/orb getReleases returns null for 404 1`] = `
+exports[`datasource/orb/index getReleases returns null for 404 1`] = `
 Array [
   Object {
     "graphql": Object {
       "query": Object {
+        "__vars": Object {
+          "$lookupName": "String!",
+        },
         "orb": Object {
           "__args": Object {
-            "name": "hyper-expanse/library-release-workflows",
+            "name": "$lookupName",
           },
           "homeUrl": null,
           "name": null,
@@ -181,14 +194,17 @@ Array [
           },
         },
       },
+      "variables": Object {
+        "lookupName": "hyper-expanse/library-release-workflows",
+      },
     },
     "headers": Object {
       "accept": "application/json",
-      "accept-encoding": "gzip, deflate",
-      "content-length": "128",
+      "accept-encoding": "gzip, deflate, br",
+      "content-length": "231",
       "content-type": "application/json",
       "host": "circleci.com",
-      "user-agent": "https://github.com/renovatebot/renovate",
+      "user-agent": "RenovateBot/0.0.0-semantic-release (https://github.com/renovatebot/renovate)",
     },
     "method": "POST",
     "url": "https://circleci.com/graphql-unstable",
@@ -196,14 +212,17 @@ Array [
 ]
 `;
 
-exports[`datasource/orb getReleases returns null for empty result 1`] = `
+exports[`datasource/orb/index getReleases returns null for empty result 1`] = `
 Array [
   Object {
     "graphql": Object {
       "query": Object {
+        "__vars": Object {
+          "$lookupName": "String!",
+        },
         "orb": Object {
           "__args": Object {
-            "name": "hyper-expanse/library-release-workflows",
+            "name": "$lookupName",
           },
           "homeUrl": null,
           "name": null,
@@ -213,14 +232,17 @@ Array [
           },
         },
       },
+      "variables": Object {
+        "lookupName": "hyper-expanse/library-release-workflows",
+      },
     },
     "headers": Object {
       "accept": "application/json",
-      "accept-encoding": "gzip, deflate",
-      "content-length": "128",
+      "accept-encoding": "gzip, deflate, br",
+      "content-length": "231",
       "content-type": "application/json",
       "host": "circleci.com",
-      "user-agent": "https://github.com/renovatebot/renovate",
+      "user-agent": "RenovateBot/0.0.0-semantic-release (https://github.com/renovatebot/renovate)",
     },
     "method": "POST",
     "url": "https://circleci.com/graphql-unstable",
@@ -228,14 +250,17 @@ Array [
 ]
 `;
 
-exports[`datasource/orb getReleases returns null for missing orb 1`] = `
+exports[`datasource/orb/index getReleases returns null for missing orb 1`] = `
 Array [
   Object {
     "graphql": Object {
       "query": Object {
+        "__vars": Object {
+          "$lookupName": "String!",
+        },
         "orb": Object {
           "__args": Object {
-            "name": "hyper-expanse/library-release-wonkflows",
+            "name": "$lookupName",
           },
           "homeUrl": null,
           "name": null,
@@ -245,14 +270,17 @@ Array [
           },
         },
       },
+      "variables": Object {
+        "lookupName": "hyper-expanse/library-release-wonkflows",
+      },
     },
     "headers": Object {
       "accept": "application/json",
-      "accept-encoding": "gzip, deflate",
-      "content-length": "128",
+      "accept-encoding": "gzip, deflate, br",
+      "content-length": "231",
       "content-type": "application/json",
       "host": "circleci.com",
-      "user-agent": "https://github.com/renovatebot/renovate",
+      "user-agent": "RenovateBot/0.0.0-semantic-release (https://github.com/renovatebot/renovate)",
     },
     "method": "POST",
     "url": "https://circleci.com/graphql-unstable",
@@ -260,14 +288,17 @@ Array [
 ]
 `;
 
-exports[`datasource/orb getReleases returns null for unknown error 1`] = `
+exports[`datasource/orb/index getReleases returns null for unknown error 1`] = `
 Array [
   Object {
     "graphql": Object {
       "query": Object {
+        "__vars": Object {
+          "$lookupName": "String!",
+        },
         "orb": Object {
           "__args": Object {
-            "name": "hyper-expanse/library-release-workflows",
+            "name": "$lookupName",
           },
           "homeUrl": null,
           "name": null,
@@ -277,14 +308,17 @@ Array [
           },
         },
       },
+      "variables": Object {
+        "lookupName": "hyper-expanse/library-release-workflows",
+      },
     },
     "headers": Object {
       "accept": "application/json",
-      "accept-encoding": "gzip, deflate",
-      "content-length": "128",
+      "accept-encoding": "gzip, deflate, br",
+      "content-length": "231",
       "content-type": "application/json",
       "host": "circleci.com",
-      "user-agent": "https://github.com/renovatebot/renovate",
+      "user-agent": "RenovateBot/0.0.0-semantic-release (https://github.com/renovatebot/renovate)",
     },
     "method": "POST",
     "url": "https://circleci.com/graphql-unstable",

@@ -1,8 +1,8 @@
 import { XmlDocument, XmlElement } from 'xmldoc';
 import { logger } from '../../logger';
 import { Http } from '../../util/http';
-import { ReleaseResult } from '../common';
-
+import { regEx } from '../../util/regex';
+import type { ReleaseResult } from '../types';
 import { id, removeBuildMeta } from './common';
 
 const http = new Http(id);
@@ -16,11 +16,10 @@ export async function getReleases(
   pkgName: string
 ): Promise<ReleaseResult | null> {
   const dep: ReleaseResult = {
-    pkgName,
     releases: [],
   };
   let pkgUrlList = `${feedUrl.replace(
-    /\/+$/,
+    regEx(/\/+$/),
     ''
   )}/FindPackagesById()?id=%27${pkgName}%27&$select=Version,IsLatestVersion,ProjectUrl,Published`;
   do {

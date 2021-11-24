@@ -3,7 +3,7 @@ import { envMock, mockExecAll } from '../../../../test/exec-util';
 import { mocked } from '../../../../test/util';
 import * as _env from '../../../util/exec/env';
 import * as _fs from '../../../util/fs/proxies';
-import { PostUpdateConfig } from '../../common';
+import type { PostUpdateConfig } from '../../types';
 import * as _pnpmHelper from './pnpm';
 
 jest.mock('child_process');
@@ -17,19 +17,18 @@ const fs = mocked(_fs);
 const pnpmHelper = mocked(_pnpmHelper);
 delete process.env.NPM_CONFIG_CACHE;
 
-describe('generateLockFile', () => {
+describe('manager/npm/post-update/pnpm', () => {
   let config: PostUpdateConfig;
   beforeEach(() => {
     config = { cacheDir: 'some-cache-dir', constraints: { pnpm: '^2.0.0' } };
     env.getChildProcessEnv.mockReturnValue(envMock.basic);
   });
   it('generates lock files', async () => {
-    config.dockerMapDotfiles = true;
     const execSnapshots = mockExecAll(exec);
     fs.readFile = jest.fn(() => 'package-lock-contents') as never;
     const res = await pnpmHelper.generateLockFile('some-dir', {}, config);
     expect(fs.readFile).toHaveBeenCalledTimes(1);
-    expect(res.lockFile).toEqual('package-lock-contents');
+    expect(res.lockFile).toBe('package-lock-contents');
     expect(execSnapshots).toMatchSnapshot();
   });
   it('catches errors', async () => {
@@ -39,8 +38,8 @@ describe('generateLockFile', () => {
     }) as never;
     const res = await pnpmHelper.generateLockFile('some-dir', {}, config);
     expect(fs.readFile).toHaveBeenCalledTimes(1);
-    expect(res.error).toBe(true);
-    expect(res.lockFile).not.toBeDefined();
+    expect(res.error).toBeTrue();
+    expect(res.lockFile).toBeUndefined();
     expect(execSnapshots).toMatchSnapshot();
   });
   it('finds pnpm globally', async () => {
@@ -48,7 +47,7 @@ describe('generateLockFile', () => {
     fs.readFile = jest.fn(() => 'package-lock-contents') as never;
     const res = await pnpmHelper.generateLockFile('some-dir', {}, config);
     expect(fs.readFile).toHaveBeenCalledTimes(1);
-    expect(res.lockFile).toEqual('package-lock-contents');
+    expect(res.lockFile).toBe('package-lock-contents');
     expect(execSnapshots).toMatchSnapshot();
   });
   it('performs lock file maintenance', async () => {
@@ -59,7 +58,23 @@ describe('generateLockFile', () => {
     ]);
     expect(fs.readFile).toHaveBeenCalledTimes(1);
     expect(fs.remove).toHaveBeenCalledTimes(1);
-    expect(res.lockFile).toEqual('package-lock-contents');
+    expect(res.lockFile).toBe('package-lock-contents');
     expect(execSnapshots).toMatchSnapshot();
+  });
+
+  it('uses the new version if packageManager is updated', async () => {
+    const execSnapshots = mockExecAll(exec);
+    fs.readFile = jest.fn(() => 'package-lock-contents') as never;
+    const res = await pnpmHelper.generateLockFile('some-dir', {}, config, [
+      {
+        depType: 'packageManager',
+        depName: 'pnpm',
+        newValue: '6.16.1',
+      },
+    ]);
+    expect(fs.readFile).toHaveBeenCalledTimes(1);
+    expect(res.lockFile).toBe('package-lock-contents');
+    expect(execSnapshots).toMatchSnapshot();
+    // TODO: check docker preCommands
   });
 });

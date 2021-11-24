@@ -1,7 +1,7 @@
 import { defaultConfig, partial } from '../../../../test/util';
-import { UpdateType } from '../../../config';
+import type { UpdateType } from '../../../config/types';
 import * as datasourceNpm from '../../../datasource/npm';
-import { BranchUpgradeConfig } from '../../common';
+import type { BranchUpgradeConfig } from '../../types';
 import { generateBranchConfig } from './generate';
 
 beforeEach(() => {
@@ -28,6 +28,35 @@ describe('workers/repository/updates/generate', () => {
       expect(res.foo).toBe(1);
       expect(res.groupName).toBeUndefined();
       expect(res.releaseTimestamp).toBeDefined();
+    });
+    it('handles lockFileMaintenance', () => {
+      const branch = [
+        {
+          branchName: 'some-branch',
+          prTitle: 'some-title',
+          isLockFileMaintenance: true,
+        },
+      ];
+      const res = generateBranchConfig(branch);
+      // FIXME: explicit assert condition
+      expect(res).toMatchSnapshot();
+    });
+    it('handles lockFileUpdate', () => {
+      const branch = [
+        {
+          branchName: 'some-branch',
+          prTitle: 'some-title',
+          isLockfileUpdate: true,
+          currentValue: '^1.0.0',
+          currentVersion: '1.0.0',
+          lockedVersion: '1.0.0',
+          newValue: '^1.0.0',
+          newVersion: '1.0.1',
+        },
+      ];
+      const res = generateBranchConfig(branch);
+      // FIXME: explicit assert condition
+      expect(res).toMatchSnapshot();
     });
     it('does not group same upgrades', () => {
       const branch = [
@@ -67,7 +96,7 @@ describe('workers/repository/updates/generate', () => {
             'to {{#if isMajor}}v{{newMajor}}{{else}}{{#unless isRange}}v{{/unless}}{{newValue}}{{/if}}',
           foo: 1,
           newValue: '5.1.2',
-          toVersion: '5.1.2',
+          newVersion: '5.1.2',
           group: {
             foo: 2,
           },
@@ -86,7 +115,7 @@ describe('workers/repository/updates/generate', () => {
             'to {{#if isMajor}}v{{newMajor}}{{else}}{{#unless isRange}}v{{/unless}}{{newValue}}{{/if}}',
           foo: 1,
           newValue: '5.1.2',
-          toVersion: '5.1.2',
+          newVersion: '5.1.2',
           group: {
             foo: 2,
           },
@@ -106,7 +135,7 @@ describe('workers/repository/updates/generate', () => {
             'to {{#if isMajor}}v{{newMajor}}{{else}}{{#unless isRange}}v{{/unless}}{{newValue}}{{/if}}',
           foo: 1,
           newValue: '5.1.2',
-          toVersion: '5.1.2',
+          newVersion: '5.1.2',
           group: {
             foo: 2,
           },
@@ -117,8 +146,8 @@ describe('workers/repository/updates/generate', () => {
       const res = generateBranchConfig(branch);
       expect(res.foo).toBe(2);
       expect(res.groupName).toBeDefined();
-      expect(res.releaseTimestamp).toEqual('2017-02-07T20:01:41+00:00');
-      expect(res.automerge).toBe(false);
+      expect(res.releaseTimestamp).toBe('2017-02-07T20:01:41+00:00');
+      expect(res.automerge).toBeFalse();
       expect(res.constraints).toEqual({
         foo: '1.0.0',
         bar: '2.0.0',
@@ -135,7 +164,7 @@ describe('workers/repository/updates/generate', () => {
             'to {{#if isMajor}}v{{newMajor}}{{else}}{{#unless isRange}}v{{/unless}}{{newValue}}{{/if}}',
           foo: 1,
           newValue: '5.1.2',
-          toVersion: '5.1.2',
+          newVersion: '5.1.2',
           group: {
             foo: 2,
           },
@@ -150,7 +179,7 @@ describe('workers/repository/updates/generate', () => {
             'to {{#if isMajor}}v{{newMajor}}{{else}}{{#unless isRange}}v{{/unless}}{{newValue}}{{/if}}',
           foo: 1,
           newValue: '1.1.0',
-          toVersion: '1.1.0',
+          newVersion: '1.1.0',
           group: {
             foo: 2,
           },
@@ -160,9 +189,9 @@ describe('workers/repository/updates/generate', () => {
       const res = generateBranchConfig(branch);
       expect(res.foo).toBe(2);
       expect(res.singleVersion).toBeUndefined();
-      expect(res.recreateClosed).toBe(true);
+      expect(res.recreateClosed).toBeTrue();
       expect(res.groupName).toBeDefined();
-      expect(res.releaseTimestamp).toEqual('2017-02-08T20:01:41+00:00');
+      expect(res.releaseTimestamp).toBe('2017-02-08T20:01:41+00:00');
     });
     it('groups multiple digest updates', () => {
       const branch = [
@@ -198,7 +227,7 @@ describe('workers/repository/updates/generate', () => {
       const res = generateBranchConfig(branch);
       expect(res.foo).toBe(2);
       expect(res.singleVersion).toBeUndefined();
-      expect(res.recreateClosed).toBe(true);
+      expect(res.recreateClosed).toBeTrue();
       expect(res.groupName).toBeDefined();
     });
     it('fixes different messages', () => {
@@ -212,7 +241,7 @@ describe('workers/repository/updates/generate', () => {
             'to {{#if isMajor}}v{{newMajor}}{{else}}{{#unless isRange}}v{{/unless}}{{newValue}}{{/if}}',
           foo: 1,
           newValue: '>= 5.1.2',
-          toVersion: '5.1.2',
+          newVersion: '5.1.2',
           group: {
             foo: 2,
           },
@@ -227,7 +256,7 @@ describe('workers/repository/updates/generate', () => {
             'to {{#if isMajor}}v{{newMajor}}{{else}}{{#unless isRange}}v{{/unless}}{{newValue}}{{/if}}',
           foo: 1,
           newValue: '^5,1,2',
-          toVersion: '5.1.2',
+          newVersion: '5.1.2',
           group: {
             foo: 2,
           },
@@ -248,7 +277,7 @@ describe('workers/repository/updates/generate', () => {
           semanticCommitScope: 'package',
           newValue: '1.2.0',
           isSingleVersion: true,
-          toVersion: '1.2.0',
+          newVersion: '1.2.0',
           foo: 1,
           group: {
             foo: 2,
@@ -256,7 +285,7 @@ describe('workers/repository/updates/generate', () => {
         }),
       ];
       const res = generateBranchConfig(branch);
-      expect(res.prTitle).toEqual(
+      expect(res.prTitle).toBe(
         'chore(package): update dependency some-dep to v1.2.0'
       );
     });
@@ -272,7 +301,7 @@ describe('workers/repository/updates/generate', () => {
           semanticCommitScope: '{{baseDir}}',
           newValue: '1.2.0',
           isSingleVersion: true,
-          toVersion: '1.2.0',
+          newVersion: '1.2.0',
           foo: 1,
           group: {
             foo: 2,
@@ -280,9 +309,7 @@ describe('workers/repository/updates/generate', () => {
         }),
       ];
       const res = generateBranchConfig(branch);
-      expect(res.prTitle).toEqual(
-        'chore(): update dependency some-dep to v1.2.0'
-      );
+      expect(res.prTitle).toBe('chore(): update dependency some-dep to v1.2.0');
     });
     it('scopes monorepo commits with nested package files using parent directory', () => {
       const branch = [
@@ -297,7 +324,7 @@ describe('workers/repository/updates/generate', () => {
           semanticCommitScope: '{{parentDir}}',
           newValue: '1.2.0',
           isSingleVersion: true,
-          toVersion: '1.2.0',
+          newVersion: '1.2.0',
           foo: 1,
           group: {
             foo: 2,
@@ -305,7 +332,7 @@ describe('workers/repository/updates/generate', () => {
         }),
       ];
       const res = generateBranchConfig(branch);
-      expect(res.prTitle).toEqual(
+      expect(res.prTitle).toBe(
         'chore(bar): update dependency some-dep to v1.2.0'
       );
     });
@@ -315,13 +342,13 @@ describe('workers/repository/updates/generate', () => {
           ...defaultConfig,
           depName: 'some-dep',
           packageFile: 'foo/bar/package.json',
-          baseDir: 'foo/bar',
+          packageFileDir: 'foo/bar',
           semanticCommits: 'enabled',
           semanticCommitType: 'chore',
-          semanticCommitScope: '{{baseDir}}',
+          semanticCommitScope: '{{packageFileDir}}',
           newValue: '1.2.0',
           isSingleVersion: true,
-          toVersion: '1.2.0',
+          newVersion: '1.2.0',
           foo: 1,
           group: {
             foo: 2,
@@ -329,7 +356,7 @@ describe('workers/repository/updates/generate', () => {
         }),
       ];
       const res = generateBranchConfig(branch);
-      expect(res.prTitle).toEqual(
+      expect(res.prTitle).toBe(
         'chore(foo/bar): update dependency some-dep to v1.2.0'
       );
     });
@@ -341,7 +368,7 @@ describe('workers/repository/updates/generate', () => {
           commitBody: '[skip-ci]',
           newValue: '1.2.0',
           isSingleVersion: true,
-          toVersion: '1.2.0',
+          newVersion: '1.2.0',
         }),
       ];
       const res = generateBranchConfig(branch);
@@ -358,6 +385,7 @@ describe('workers/repository/updates/generate', () => {
         }),
       ];
       const res = generateBranchConfig(branch);
+      // FIXME: explicit assert condition
       expect(res.prTitle).toMatchSnapshot();
     });
     it('handles @types specially', () => {
@@ -370,8 +398,9 @@ describe('workers/repository/updates/generate', () => {
           branchName: 'some-branch',
           prTitle: 'some-title',
           currentValue: '0.5.7',
-          fromVersion: '0.5.7',
-          toVersion: '0.5.8',
+          currentVersion: '0.5.7',
+          newValue: '0.5.8',
+          newVersion: '0.5.8',
           group: {},
         },
         {
@@ -396,8 +425,9 @@ describe('workers/repository/updates/generate', () => {
         },
       ];
       const res = generateBranchConfig(branch);
-      expect(res.recreateClosed).toBe(false);
+      expect(res.recreateClosed).toBeFalse();
       expect(res.groupName).toBeUndefined();
+      // FIXME: explicit assert condition
       expect(generateBranchConfig(branch)).toMatchSnapshot();
     });
     it('handles @types specially (reversed)', () => {
@@ -408,6 +438,7 @@ describe('workers/repository/updates/generate', () => {
           branchName: 'some-branch',
           prTitle: 'some-title',
           newValue: '0.6.0',
+          labels: ['a', 'c'],
           group: {},
         },
         {
@@ -418,6 +449,7 @@ describe('workers/repository/updates/generate', () => {
           branchName: 'some-branch',
           prTitle: 'some-other-title',
           newValue: '1.0.0',
+          labels: ['a', 'b'],
           group: {},
         },
         {
@@ -426,9 +458,11 @@ describe('workers/repository/updates/generate', () => {
           branchName: 'some-branch',
           prTitle: 'some-title',
           newValue: '0.5.7',
+          labels: ['a'],
           group: {},
         },
       ];
+      // FIXME: explicit assert condition
       expect(generateBranchConfig(branch)).toMatchSnapshot();
     });
     it('handles upgrades', () => {
@@ -471,11 +505,13 @@ describe('workers/repository/updates/generate', () => {
           newValue: '0.6.0',
           isGroup: true,
           separateMajorMinor: true,
+          separateMinorPatch: true,
           updateType: 'patch' as UpdateType,
           fileReplacePosition: 0,
         },
       ];
       const res = generateBranchConfig(branch);
+      // FIXME: explicit assert condition
       expect(res.prTitle).toMatchSnapshot();
     });
     it('sorts upgrades, without position first', () => {
@@ -513,6 +549,47 @@ describe('workers/repository/updates/generate', () => {
       expect(
         res.upgrades.map((upgrade) => upgrade.fileReplacePosition)
       ).toStrictEqual([undefined, undefined, 4, 1]);
+    });
+    it('passes through pendingChecks', () => {
+      const branch = [
+        {
+          depName: 'some-dep',
+          groupName: 'some-group',
+          branchName: 'some-branch',
+          prTitle: 'some-title',
+          pendingChecks: true,
+        },
+        {
+          depName: 'some-dep',
+          groupName: 'some-group',
+          branchName: 'some-branch',
+          prTitle: 'some-title',
+          pendingChecks: true,
+        },
+      ];
+      const res = generateBranchConfig(branch);
+      expect(res.pendingChecks).toBeTrue();
+      expect(res.upgrades).toHaveLength(2);
+    });
+    it('filters pendingChecks', () => {
+      const branch = [
+        {
+          depName: 'some-dep',
+          groupName: 'some-group',
+          branchName: 'some-branch',
+          prTitle: 'some-title',
+          pendingChecks: true,
+        },
+        {
+          depName: 'some-dep',
+          groupName: 'some-group',
+          branchName: 'some-branch',
+          prTitle: 'some-title',
+        },
+      ];
+      const res = generateBranchConfig(branch);
+      expect(res.pendingChecks).toBeUndefined();
+      expect(res.upgrades).toHaveLength(1);
     });
   });
 });

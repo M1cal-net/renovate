@@ -1,7 +1,7 @@
 import os from 'os';
 import { get, init, set } from './file';
 
-describe('lib/util/cache/global/file', () => {
+describe('util/cache/package/file', () => {
   it('returns if uninitiated', async () => {
     await set('test', 'key', 1234);
     expect(await get('test', 'key')).toBeUndefined();

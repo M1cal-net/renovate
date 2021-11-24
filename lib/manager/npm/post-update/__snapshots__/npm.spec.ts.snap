@@ -1,13 +1,13 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
-exports[`generateLockFile catches errors 1`] = `Array []`;
+exports[`manager/npm/post-update/npm catches errors 1`] = `Array []`;
 
-exports[`generateLockFile finds npm globally 1`] = `Array []`;
+exports[`manager/npm/post-update/npm finds npm globally 1`] = `Array []`;
 
-exports[`generateLockFile generates lock files 1`] = `
+exports[`manager/npm/post-update/npm generates lock files 1`] = `
 Array [
   Object {
-    "cmd": "npm install --ignore-scripts --no-audit",
+    "cmd": "npm install --no-audit --ignore-scripts",
     "options": Object {
       "cwd": "some-dir",
       "encoding": "utf-8",
@@ -45,12 +45,12 @@ Array [
 ]
 `;
 
-exports[`generateLockFile performs full install 1`] = `Array []`;
+exports[`manager/npm/post-update/npm performs full install 1`] = `Array []`;
 
-exports[`generateLockFile performs lock file maintenance 1`] = `
+exports[`manager/npm/post-update/npm performs lock file maintenance 1`] = `
 Array [
   Object {
-    "cmd": "npm install --package-lock-only --ignore-scripts --no-audit",
+    "cmd": "npm install --package-lock-only --no-audit --ignore-scripts",
     "options": Object {
       "cwd": "some-dir",
       "encoding": "utf-8",
@@ -70,10 +70,10 @@ Array [
 ]
 `;
 
-exports[`generateLockFile performs lock file updates 1`] = `
+exports[`manager/npm/post-update/npm performs lock file updates 1`] = `
 Array [
   Object {
-    "cmd": "npm install --package-lock-only --ignore-scripts --no-audit some-dep@1.0.1",
+    "cmd": "npm install --package-lock-only --no-audit --ignore-scripts some-dep@1.0.1",
     "options": Object {
       "cwd": "some-dir",
       "encoding": "utf-8",
@@ -93,8 +93,8 @@ Array [
 ]
 `;
 
-exports[`generateLockFile performs npm-shrinkwrap.json updates (no package-lock.json) 1`] = `Array []`;
+exports[`manager/npm/post-update/npm performs npm-shrinkwrap.json updates (no package-lock.json) 1`] = `Array []`;
 
-exports[`generateLockFile performs npm-shrinkwrap.json updates 1`] = `Array []`;
+exports[`manager/npm/post-update/npm performs npm-shrinkwrap.json updates 1`] = `Array []`;
 
-exports[`generateLockFile uses docker npm 1`] = `Array []`;
+exports[`manager/npm/post-update/npm uses docker npm 1`] = `Array []`;

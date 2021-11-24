@@ -1,8 +1,9 @@
+import is from '@sindresorhus/is';
 import { logger } from '../../../logger';
 import { ExternalHostError } from '../../../types/errors/external-host-error';
 import type { GitLabBranch } from '../../../types/platform/gitlab';
 import { GitlabHttp } from '../../../util/http/gitlab';
-import { Preset, PresetConfig } from '../common';
+import type { Preset, PresetConfig } from '../types';
 import { PRESET_DEP_NOT_FOUND, fetchPreset } from '../util';
 
 const gitlabApi = new GitlabHttp();
@@ -30,17 +31,25 @@ async function getDefaultBranchName(
 export async function fetchJSONFile(
   repo: string,
   fileName: string,
-  endpoint: string
+  endpoint: string,
+  packageTag?: string
 ): Promise<Preset> {
   let url = endpoint;
+  let ref = '';
   try {
     const urlEncodedRepo = encodeURIComponent(repo);
     const urlEncodedPkgName = encodeURIComponent(fileName);
-    const defaultBranchName = await getDefaultBranchName(
-      urlEncodedRepo,
-      endpoint
-    );
-    url += `projects/${urlEncodedRepo}/repository/files/${urlEncodedPkgName}/raw?ref=${defaultBranchName}`;
+    if (is.nonEmptyString(packageTag)) {
+      ref = `?ref=${packageTag}`;
+    } else {
+      const defaultBranchName = await getDefaultBranchName(
+        urlEncodedRepo,
+        endpoint
+      );
+      ref = `?ref=${defaultBranchName}`;
+    }
+    url += `projects/${urlEncodedRepo}/repository/files/${urlEncodedPkgName}/raw${ref}`;
+    logger.trace({ url }, `Preset URL`);
     return (await gitlabApi.getJson<Preset>(url)).body;
   } catch (err) {
     if (err instanceof ExternalHostError) {
@@ -57,19 +66,31 @@ export async function fetchJSONFile(
 export function getPresetFromEndpoint(
   pkgName: string,
   presetName: string,
-  endpoint = Endpoint
+  presetPath: string,
+  endpoint = Endpoint,
+  packageTag?: string
 ): Promise<Preset> {
   return fetchPreset({
     pkgName,
     filePreset: presetName,
+    presetPath,
     endpoint,
+    packageTag,
     fetch: fetchJSONFile,
   });
 }
 
 export function getPreset({
   packageName: pkgName,
+  presetPath,
   presetName = 'default',
+  packageTag = null,
 }: PresetConfig): Promise<Preset> {
-  return getPresetFromEndpoint(pkgName, presetName, Endpoint);
+  return getPresetFromEndpoint(
+    pkgName,
+    presetName,
+    presetPath,
+    Endpoint,
+    packageTag
+  );
 }

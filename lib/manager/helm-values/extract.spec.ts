@@ -1,17 +1,15 @@
-import { readFileSync } from 'fs';
+import { loadFixture } from '../../../test/util';
 import { extractPackageFile } from './extract';
 
-const helmDefaultChartInitValues = readFileSync(
-  'lib/manager/helm-values/__fixtures__/default_chart_init_values.yaml',
-  'utf8'
+const helmDefaultChartInitValues = loadFixture(
+  'default_chart_init_values.yaml'
 );
 
-const helmMultiAndNestedImageValues = readFileSync(
-  'lib/manager/helm-values/__fixtures__/multi_and_nested_image_values.yaml',
-  'utf8'
+const helmMultiAndNestedImageValues = loadFixture(
+  'multi_and_nested_image_values.yaml'
 );
 
-describe('lib/manager/helm-values/extract', () => {
+describe('manager/helm-values/extract', () => {
   describe('extractPackageFile()', () => {
     beforeEach(() => {
       jest.resetAllMocks();
@@ -30,11 +28,19 @@ describe('lib/manager/helm-values/extract', () => {
     });
     it('extracts from values.yaml correctly with same structure as "helm create"', () => {
       const result = extractPackageFile(helmDefaultChartInitValues);
-      expect(result).toMatchSnapshot();
+      expect(result).toMatchSnapshot({
+        deps: [
+          {
+            currentValue: '1.16.1',
+            depName: 'nginx',
+          },
+        ],
+      });
     });
     it('extracts from complex values file correctly"', () => {
       const result = extractPackageFile(helmMultiAndNestedImageValues);
       expect(result).toMatchSnapshot();
+      expect(result.deps).toHaveLength(5);
     });
   });
 });

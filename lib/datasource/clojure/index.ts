@@ -1,8 +1,26 @@
+import { Datasource } from '../datasource';
+import { getReleases } from '../maven';
 import { MAVEN_REPO } from '../maven/common';
+import type { GetReleasesConfig, ReleaseResult } from '../types';
 
-export const id = 'clojure';
+export class ClojureDatasource extends Datasource {
+  static readonly id = 'clojure';
 
-export const defaultRegistryUrls = ['https://clojars.org/repo', MAVEN_REPO];
-export const registryStrategy = 'merge';
+  constructor() {
+    super(ClojureDatasource.id);
+  }
 
-export { getReleases } from '../maven';
+  override readonly registryStrategy = 'merge';
+
+  override readonly defaultRegistryUrls = [
+    'https://clojars.org/repo',
+    MAVEN_REPO,
+  ];
+
+  getReleases({
+    lookupName,
+    registryUrl,
+  }: GetReleasesConfig): Promise<ReleaseResult | null> {
+    return getReleases({ lookupName, registryUrl });
+  }
+}

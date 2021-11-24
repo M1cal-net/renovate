@@ -1,15 +1,16 @@
 import URL from 'url';
-import { PLATFORM_TYPE_GITHUB } from '../../../constants/platforms';
-import { Release } from '../../../datasource';
+import { PlatformId } from '../../../constants';
+import type { Release } from '../../../datasource/types';
 import { logger } from '../../../logger';
 import * as memCache from '../../../util/cache/memory';
 import * as packageCache from '../../../util/cache/package';
 import * as hostRules from '../../../util/host-rules';
+import { regEx } from '../../../util/regex';
 import * as allVersioning from '../../../versioning';
-import { BranchUpgradeConfig } from '../../common';
-import { ChangeLogError, ChangeLogRelease, ChangeLogResult } from './common';
+import type { BranchUpgradeConfig } from '../../types';
 import { getTags } from './github';
 import { addReleaseNotes } from './release-notes';
+import { ChangeLogError, ChangeLogRelease, ChangeLogResult } from './types';
 
 function getCachedTags(
   endpoint: string,
@@ -28,9 +29,10 @@ function getCachedTags(
 
 export async function getChangeLogJSON({
   versioning,
-  fromVersion,
-  toVersion,
+  currentVersion,
+  newVersion,
   sourceUrl,
+  sourceDirectory,
   releases,
   depName,
   manager,
@@ -46,7 +48,7 @@ export async function getChangeLogJSON({
     ? 'https://api.github.com/'
     : sourceUrl;
   const config = hostRules.find({
-    hostType: PLATFORM_TYPE_GITHUB,
+    hostType: PlatformId.Github,
     url,
   });
   // istanbul ignore if
@@ -67,7 +69,10 @@ export async function getChangeLogJSON({
   const apiBaseUrl = sourceUrl.startsWith('https://github.com/')
     ? 'https://api.github.com/'
     : baseUrl + 'api/v3/';
-  const repository = pathname.slice(1).replace(/\/$/, '');
+  const repository = pathname
+    .slice(1)
+    .replace(regEx(/\/$/), '')
+    .replace(regEx(/\.git$/), '');
   if (repository.split('/').length !== 2) {
     logger.debug({ sourceUrl }, 'Invalid github URL found');
     return null;
@@ -82,7 +87,7 @@ export async function getChangeLogJSON({
     .sort((a, b) => version.sortVersions(a.version, b.version));
 
   if (validReleases.length < 2) {
-    logger.debug('Not enough valid releases');
+    logger.debug(`Not enough valid releases for dep ${depName}`);
     return null;
   }
 
@@ -92,7 +97,7 @@ export async function getChangeLogJSON({
     if (!tags) {
       tags = await getCachedTags(apiBaseUrl, repository);
     }
-    const regex = new RegExp(`(?:${depName}|release)[@-]`);
+    const regex = regEx(`(?:${depName}|release)[@-]`);
     const tagName = tags
       .filter((tag) => version.isVersion(tag.replace(regex, '')))
       .find((tag) => version.equals(tag.replace(regex, ''), release.version));
@@ -113,8 +118,8 @@ export async function getChangeLogJSON({
   const changelogReleases: ChangeLogRelease[] = [];
   // compare versions
   const include = (v: string): boolean =>
-    version.isGreaterThan(v, fromVersion) &&
-    !version.isGreaterThan(v, toVersion);
+    version.isGreaterThan(v, currentVersion) &&
+    !version.isGreaterThan(v, newVersion);
   for (let i = 1; i < validReleases.length; i += 1) {
     const prev = validReleases[i - 1];
     const next = validReleases[i];
@@ -153,8 +158,10 @@ export async function getChangeLogJSON({
     project: {
       apiBaseUrl,
       baseUrl,
-      github: repository,
-      repository: sourceUrl,
+      type: 'github',
+      repository,
+      sourceUrl,
+      sourceDirectory,
       depName,
     },
     versions: changelogReleases,

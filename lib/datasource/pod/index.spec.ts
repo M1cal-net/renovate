@@ -14,18 +14,18 @@ const config = {
 const githubApiHost = 'https://api.github.com';
 const cocoapodsHost = 'https://cdn.cocoapods.org';
 
-describe('datasource/cocoapods', () => {
+describe('datasource/pod/index', () => {
   describe('getReleases', () => {
     beforeEach(() => {
       jest.resetAllMocks();
-      httpMock.setup();
-    });
-
-    afterEach(() => {
-      httpMock.reset();
     });
 
     it('returns null for invalid inputs', async () => {
+      // FIXME: why get request?
+      httpMock
+        .scope(cocoapodsHost)
+        .get('/all_pods_versions_3_8_5.txt')
+        .reply(404);
       expect(
         await getPkgReleases({
           datasource: pod.id,
@@ -35,6 +35,11 @@ describe('datasource/cocoapods', () => {
       ).toBeNull();
     });
     it('returns null for empty result', async () => {
+      // FIXME: why get request?
+      httpMock
+        .scope(cocoapodsHost)
+        .get('/all_pods_versions_a_c_b.txt')
+        .reply(404);
       expect(await getPkgReleases(config)).toBeNull();
     });
     it('returns null for 404', async () => {
@@ -86,6 +91,7 @@ describe('datasource/cocoapods', () => {
           registryUrls: ['https://github.com/CocoaPods/Specs'],
         })
       ).toEqual({
+        registryUrl: 'https://github.com/CocoaPods/Specs',
         releases: [
           {
             version: '1.2.3',
@@ -106,6 +112,7 @@ describe('datasource/cocoapods', () => {
         registryUrls: ['https://github.com/Artsy/Specs'],
       });
       expect(res).toEqual({
+        registryUrl: 'https://github.com/Artsy/Specs',
         releases: [
           {
             version: '1.2.3',

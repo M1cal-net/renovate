@@ -1,12 +1,11 @@
 import * as httpMock from '../../../test/http-mock';
-import { getName } from '../../../test/util';
-import { PLATFORM_TYPE_BITBUCKET_SERVER } from '../../constants/platforms';
+import { PlatformId } from '../../constants';
 import * as hostRules from '../host-rules';
 import { BitbucketServerHttp, setBaseUrl } from './bitbucket-server';
 
 const baseUrl = 'https://git.example.com';
 
-describe(getName(__filename), () => {
+describe('util/http/bitbucket-server', () => {
   let api: BitbucketServerHttp;
   beforeEach(() => {
     api = new BitbucketServerHttp();
@@ -17,16 +16,14 @@ describe(getName(__filename), () => {
     // clean up hostRules
     hostRules.clear();
     hostRules.add({
-      hostType: PLATFORM_TYPE_BITBUCKET_SERVER,
-      baseUrl,
+      hostType: PlatformId.BitbucketServer,
+      matchHost: baseUrl,
       token: 'token',
     });
 
-    httpMock.reset();
-    httpMock.setup();
-
     setBaseUrl(baseUrl);
   });
+
   it('posts', async () => {
     const body = ['a', 'b'];
     httpMock.scope(baseUrl).post('/some-url').reply(200, body);

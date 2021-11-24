@@ -1,24 +1,27 @@
 import { XmlDocument } from 'xmldoc';
 import { logger } from '../../logger';
+import { regEx } from '../../util/regex';
+import * as ivyVersioning from '../../versioning/ivy';
 import { compare } from '../../versioning/maven/compare';
-import { GetReleasesConfig, ReleaseResult } from '../common';
 import { MAVEN_REPO } from '../maven/common';
 import { downloadHttpProtocol } from '../maven/util';
 import { parseIndexDir } from '../sbt-plugin/util';
+import type { GetReleasesConfig, ReleaseResult } from '../types';
 
 export const id = 'sbt-package';
-
+export const customRegistrySupport = true;
 export const defaultRegistryUrls = [MAVEN_REPO];
+export const defaultVersioning = ivyVersioning.id;
 export const registryStrategy = 'hunt';
 
-const ensureTrailingSlash = (str: string): string => str.replace(/\/?$/, '/');
+const ensureTrailingSlash = (str: string): string => str.replace(/\/?$/, '/'); // TODO #12070
 
 export async function getArtifactSubdirs(
   searchRoot: string,
   artifact: string,
   scalaVersion: string
 ): Promise<string[]> {
-  const indexContent = await downloadHttpProtocol(
+  const { body: indexContent } = await downloadHttpProtocol(
     ensureTrailingSlash(searchRoot),
     'sbt'
   );
@@ -56,9 +59,9 @@ export async function getPackageReleases(
   if (artifactSubdirs) {
     const releases: string[] = [];
     const parseReleases = (content: string): string[] =>
-      parseIndexDir(content, (x) => !/^\.+$/.test(x));
+      parseIndexDir(content, (x) => !regEx(/^\.+$/).test(x));
     for (const searchSubdir of artifactSubdirs) {
-      const content = await downloadHttpProtocol(
+      const { body: content } = await downloadHttpProtocol(
         ensureTrailingSlash(`${searchRoot}/${searchSubdir}`),
         'sbt'
       );
@@ -108,7 +111,7 @@ export async function getUrls(
 
     for (const pomFileName of pomFileNames) {
       const pomUrl = `${searchRoot}/${artifactDir}/${version}/${pomFileName}`;
-      const content = await downloadHttpProtocol(pomUrl, 'sbt');
+      const { body: content } = await downloadHttpProtocol(pomUrl, 'sbt');
 
       if (content) {
         const pomXml = new XmlDocument(content);
@@ -121,10 +124,10 @@ export async function getUrls(
         const sourceUrl = pomXml.valueWithPath('scm.url');
         if (sourceUrl) {
           result.sourceUrl = sourceUrl
-            .replace(/^scm:/, '')
-            .replace(/^git:/, '')
-            .replace(/^git@github.com:/, 'https://github.com/')
-            .replace(/\.git$/, '');
+            .replace(regEx(/^scm:/), '') // TODO #12071
+            .replace(regEx(/^git:/), '') // TODO #12071
+            .replace(regEx(/^git@github.com:/), 'https://github.com/') // TODO #12071
+            .replace(regEx(/\.git$/), ''); // TODO #12071
         }
 
         return result;
@@ -166,9 +169,6 @@ export async function getReleases({
     if (versions) {
       return {
         ...urls,
-        display: lookupName,
-        group: groupId,
-        name: artifactId,
         dependencyUrl,
         releases: versions.map((v) => ({ version: v })),
       };

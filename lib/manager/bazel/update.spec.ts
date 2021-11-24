@@ -1,24 +1,12 @@
-import { readFileSync } from 'fs';
 import { Readable } from 'stream';
-import { resolve } from 'upath';
 import * as httpMock from '../../../test/http-mock';
-import { UpdateType } from '../../config';
+import { loadFixture } from '../../../test/util';
+import type { UpdateType } from '../../config/types';
 import { updateDependency } from './update';
 
-const content = readFileSync(
-  resolve('lib/manager/bazel/__fixtures__/WORKSPACE1'),
-  'utf8'
-);
-
-const contentContainerPull = readFileSync(
-  resolve('lib/manager/bazel/__fixtures__/container_pull'),
-  'utf8'
-);
-
-const fileWithBzlExtension = readFileSync(
-  'lib/manager/bazel/__fixtures__/repositories.bzl',
-  'utf8'
-);
+const content = loadFixture('WORKSPACE1');
+const contentContainerPull = loadFixture('container_pull');
+const fileWithBzlExtension = loadFixture('repositories.bzl');
 
 /*
 git_repository(
@@ -32,11 +20,6 @@ describe('manager/bazel/update', () => {
   describe('updateDependency', () => {
     beforeEach(() => {
       jest.resetAllMocks();
-      httpMock.setup();
-    });
-
-    afterEach(() => {
-      httpMock.reset();
     });
 
     it('updates tag', async () => {
@@ -210,6 +193,12 @@ describe('manager/bazel/update', () => {
         currentValue: '0.6.0',
         newValue: '0.8.0',
       };
+
+      httpMock
+        .scope('https://github.com')
+        .get('/bazelbuild/bazel-skyfoo/archive/0.8.0.tar.gz')
+        .reply(500);
+
       const res = await updateDependency({
         fileContent: content,
         upgrade,

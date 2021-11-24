@@ -9,10 +9,8 @@ const hostRules: any = _hostRules;
 const githubApiHost = 'https://api.github.com';
 const githubEnterpriseApiHost = 'https://git.enterprise.com';
 
-describe('datasource/github-tags', () => {
+describe('datasource/github-tags/index', () => {
   beforeEach(() => {
-    httpMock.reset();
-    httpMock.setup();
     jest.resetAllMocks();
     hostRules.hosts = jest.fn(() => []);
     hostRules.find.mockReturnValue({
@@ -106,8 +104,6 @@ describe('datasource/github-tags', () => {
   });
   describe('getReleases', () => {
     beforeEach(() => {
-      httpMock.reset();
-      httpMock.setup();
       jest.resetAllMocks();
       hostRules.hosts = jest.fn(() => []);
       hostRules.find.mockReturnValue({

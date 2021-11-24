@@ -1,17 +1,10 @@
-import { readFileSync } from 'fs';
+import { loadFixture } from '../../../test/util';
 import { extractPackageFile } from '.';
 
-const brokenYaml = readFileSync(
-  'lib/manager/pub/__fixtures__/update.yaml',
-  'utf8'
-);
+const brokenYaml = loadFixture('update.yaml');
+const packageFile = loadFixture('extract.yaml');
 
-const packageFile = readFileSync(
-  'lib/manager/pub/__fixtures__/extract.yaml',
-  'utf8'
-);
-
-describe('manager/pub', () => {
+describe('manager/pub/extract', () => {
   describe('extractPackageFile', () => {
     it('should return null if package does not contain any deps', () => {
       const res = extractPackageFile('foo: bar', 'pubspec.yaml');
@@ -23,6 +16,7 @@ describe('manager/pub', () => {
     });
     it('should return valid dependencies', () => {
       const res = extractPackageFile(packageFile, 'pubspec.yaml');
+      // FIXME: explicit assert condition
       expect(res).toMatchSnapshot();
     });
   });

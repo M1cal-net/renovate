@@ -1,8 +1,11 @@
 import URL from 'url';
 import is from '@sindresorhus/is';
 import parse from 'github-url-from-git';
+import { DateTime } from 'luxon';
 import * as hostRules from '../util/host-rules';
-import { ReleaseResult } from './common';
+import { regEx } from '../util/regex';
+import { validateUrl } from '../util/url';
+import type { ReleaseResult } from './types';
 
 // Use this object to define changelog URLs for packages
 // Only necessary when the changelog data cannot be found in the package's source repository
@@ -16,6 +19,9 @@ const manualChangelogUrls = {
       'https://github.com/gatsbyjs/gatsby/blob/master/packages/gatsby/CHANGELOG.md',
     'react-native':
       'https://github.com/react-native-community/react-native-releases/blob/master/CHANGELOG.md',
+    sharp: 'https://github.com/lovell/sharp/blob/master/docs/changelog.md',
+    'tailwindcss-classnames':
+      'https://github.com/muhammadsammy/tailwindcss-classnames/blob/master/CHANGELOG.md',
     'zone.js':
       'https://github.com/angular/angular/blob/master/packages/zone.js/CHANGELOG.md',
   },
@@ -50,9 +56,11 @@ const manualChangelogUrls = {
   },
   docker: {
     'gitlab/gitlab-ce':
-      'https://gitlab.com/gitlab-org/omnibus-gitlab/-/blob/master/CHANGELOG.md',
+      'https://gitlab.com/gitlab-org/gitlab-foss/-/blob/master/CHANGELOG.md',
     'gitlab/gitlab-runner':
       'https://gitlab.com/gitlab-org/gitlab-runner/-/blob/master/CHANGELOG.md',
+    'google/cloud-sdk': 'https://cloud.google.com/sdk/docs/release-notes',
+    neo4j: 'https://neo4j.com/release-notes/',
   },
 };
 
@@ -65,6 +73,8 @@ const manualSourceUrls = {
       'https://github.com/hyper-expanse/library-release-workflows',
   },
   docker: {
+    'amd64/traefik': 'https://github.com/containous/traefik',
+    'coredns/coredns': 'https://github.com/coredns/coredns',
     'docker/compose': 'https://github.com/docker/compose',
     'drone/drone': 'https://github.com/drone/drone',
     'drone/drone-runner-docker':
@@ -75,8 +85,9 @@ const manualSourceUrls = {
       'https://github.com/drone-runners/drone-runner-ssh',
     'gcr.io/kaniko-project/executor':
       'https://github.com/GoogleContainerTools/kaniko',
-    'gitlab/gitlab-ce': 'https://gitlab.com/gitlab-org/omnibus-gitlab',
+    'gitlab/gitlab-ce': 'https://gitlab.com/gitlab-org/gitlab-foss',
     'gitlab/gitlab-runner': 'https://gitlab.com/gitlab-org/gitlab-runner',
+    'gitea/gitea': 'https://github.com/go-gitea/gitea',
     'hashicorp/terraform': 'https://github.com/hashicorp/terraform',
     node: 'https://github.com/nodejs/node',
     traefik: 'https://github.com/containous/traefik',
@@ -99,7 +110,7 @@ const manualSourceUrls = {
 function massageGithubUrl(url: string): string {
   return url
     .replace('http:', 'https:')
-    .replace(/^git:\/?\/?/, 'https://')
+    .replace(regEx(/^git:\/?\/?/), 'https://')
     .replace('www.github.com', 'github.com')
     .split('/')
     .slice(0, 5)
@@ -109,13 +120,61 @@ function massageGithubUrl(url: string): string {
 function massageGitlabUrl(url: string): string {
   return url
     .replace('http:', 'https:')
-    .replace(/^git:\/?\/?/, 'https://')
-    .replace(/\/tree\/.*$/i, '')
-    .replace(/\/$/i, '')
+    .replace(regEx(/^git:\/?\/?/), 'https://')
+    .replace(regEx(/\/tree\/.*$/i), '')
+    .replace(regEx(/\/$/i), '')
     .replace('.git', '');
 }
 
-/* eslint-disable no-param-reassign */
+function normalizeDate(input: any): string | null {
+  if (
+    typeof input === 'number' &&
+    !Number.isNaN(input) &&
+    input > 0 &&
+    input <= Date.now() + 24 * 60 * 60 * 1000
+  ) {
+    return new Date(input).toISOString();
+  }
+
+  if (typeof input === 'string') {
+    // `Date.parse()` is more permissive, but it assumes local time zone
+    // for inputs like `2021-01-01`.
+    //
+    // Here we try to parse with default UTC with fallback to `Date.parse()`.
+    //
+    // It allows us not to care about machine timezones so much, though
+    // some misinterpretation is still possible, but only if both:
+    //
+    //   1. Renovate machine is configured for non-UTC zone
+    //   2. Format of `input` is very exotic
+    //      (from `DateTime.fromISO()` perspective)
+    //
+    const luxonDate = DateTime.fromISO(input, { zone: 'UTC' });
+    if (luxonDate.isValid) {
+      return luxonDate.toISO();
+    }
+
+    return normalizeDate(Date.parse(input));
+  }
+
+  if (input instanceof Date) {
+    return input.toISOString();
+  }
+
+  return null;
+}
+
+function massageTimestamps(dep: ReleaseResult): void {
+  for (const release of dep.releases || []) {
+    let { releaseTimestamp } = release;
+    delete release.releaseTimestamp;
+    releaseTimestamp = normalizeDate(releaseTimestamp);
+    if (releaseTimestamp) {
+      release.releaseTimestamp = releaseTimestamp;
+    }
+  }
+}
+
 export function addMetaData(
   dep?: ReleaseResult,
   datasource?: string,
@@ -124,6 +183,9 @@ export function addMetaData(
   if (!dep) {
     return;
   }
+
+  massageTimestamps(dep);
+
   const lookupNameLowercase = lookupName ? lookupName.toLowerCase() : null;
   if (manualChangelogUrls[datasource]?.[lookupNameLowercase]) {
     dep.changelogUrl = manualChangelogUrls[datasource][lookupNameLowercase];
@@ -171,14 +233,10 @@ export function addMetaData(
   }
 
   // Clean up any empty urls
-  const urls = ['homepage', 'sourceUrl', 'changelogUrl'];
+  const urls = ['homepage', 'sourceUrl', 'changelogUrl', 'dependencyUrl'];
   for (const url of urls) {
-    if (is.nonEmptyString(dep[url])) {
+    if (is.string(dep[url]) && validateUrl(dep[url].trim())) {
       dep[url] = dep[url].trim();
-      // istanbul ignore if
-      if (!dep[url].match(/^https?:\/\//)) {
-        delete dep[url];
-      }
     } else {
       delete dep[url];
     }

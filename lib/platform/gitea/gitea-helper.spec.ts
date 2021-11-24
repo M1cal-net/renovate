@@ -84,6 +84,7 @@ describe('platform/gitea/gitea-helper', () => {
     title: 'Some Issue',
     body: 'just some issue',
     assignees: [mockUser],
+    labels: [],
   };
 
   const mockComment: ght.Comment = {
@@ -139,8 +140,6 @@ describe('platform/gitea/gitea-helper', () => {
 
   beforeEach(() => {
     jest.resetAllMocks();
-    httpMock.reset();
-    httpMock.setup();
     setBaseUrl(baseUrl);
   });
 
@@ -151,6 +150,17 @@ describe('platform/gitea/gitea-helper', () => {
       const res = await ght.getCurrentUser();
       expect(res).toEqual(mockUser);
       expect(httpMock.getTrace()).toMatchSnapshot();
+    });
+  });
+
+  describe('getVersion', () => {
+    it('should call /api/v1/version endpoint', async () => {
+      const version = '1.13.01.14.0+dev-754-g5d2b7ba63';
+      httpMock.scope(baseUrl).get('/version').reply(200, { version });
+
+      const res = await ght.getVersion();
+      expect(httpMock.getTrace()).toMatchSnapshot();
+      expect(res).toEqual(version);
     });
   });
 
@@ -172,7 +182,7 @@ describe('platform/gitea/gitea-helper', () => {
     it('should construct proper query parameters', async () => {
       httpMock
         .scope(baseUrl)
-        .get('/repos/search?uid=13')
+        .get('/repos/search?uid=13&archived=false')
         .reply(200, {
           ok: true,
           data: [otherMockRepo],
@@ -180,6 +190,7 @@ describe('platform/gitea/gitea-helper', () => {
 
       const res = await ght.searchRepos({
         uid: 13,
+        archived: false,
       });
       expect(res).toEqual([otherMockRepo]);
       expect(httpMock.getTrace()).toMatchSnapshot();
@@ -371,6 +382,20 @@ describe('platform/gitea/gitea-helper', () => {
     });
   });
 
+  describe('addReviewers', () => {
+    it('should call /api/v1/repos/[repo]/pulls/[pull]/requested_reviewers endpoint', async () => {
+      httpMock
+        .scope(baseUrl)
+        .post(
+          `/repos/${mockRepo.full_name}/pulls/${mockPR.number}/requested_reviewers`
+        )
+        .reply(200);
+
+      await ght.requestPrReviewers(mockRepo.full_name, mockPR.number, {});
+      expect(httpMock.getTrace()).toMatchSnapshot();
+    });
+  });
+
   describe('searchPRs', () => {
     it('should call /api/v1/repos/[repo]/pulls endpoint', async () => {
       httpMock
@@ -444,6 +469,30 @@ describe('platform/gitea/gitea-helper', () => {
     });
   });
 
+  describe('updateIssueLabels', () => {
+    it('should call /api/v1/repos/[repo]/issues/[issue]/labels endpoint', async () => {
+      const updatedMockLabels: Partial<ght.Label>[] = [
+        { id: 1, name: 'Renovate' },
+        { id: 3, name: 'Maintenance' },
+      ];
+
+      httpMock
+        .scope(baseUrl)
+        .put(`/repos/${mockRepo.full_name}/issues/${mockIssue.number}/labels`)
+        .reply(200, updatedMockLabels);
+
+      const res = await ght.updateIssueLabels(
+        mockRepo.full_name,
+        mockIssue.number,
+        {
+          labels: [1, 3],
+        }
+      );
+      expect(res).toEqual(updatedMockLabels);
+      expect(httpMock.getTrace()).toMatchSnapshot();
+    });
+  });
+
   describe('closeIssue', () => {
     it('should call /api/v1/repos/[repo]/issues/[issue] endpoint', async () => {
       httpMock
@@ -479,6 +528,19 @@ describe('platform/gitea/gitea-helper', () => {
         state: 'open',
       });
       expect(res).toEqual([mockIssue]);
+      expect(httpMock.getTrace()).toMatchSnapshot();
+    });
+  });
+
+  describe('getIssue', () => {
+    it('should call /api/v1/repos/[repo]/issues/[issue] endpoint', async () => {
+      httpMock
+        .scope(baseUrl)
+        .get(`/repos/${mockRepo.full_name}/issues/${mockIssue.number}`)
+        .reply(200, mockIssue);
+
+      const res = await ght.getIssue(mockRepo.full_name, mockIssue.number);
+      expect(res).toEqual(mockIssue);
       expect(httpMock.getTrace()).toMatchSnapshot();
     });
   });
@@ -630,7 +692,7 @@ describe('platform/gitea/gitea-helper', () => {
         mockRepo.full_name,
         mockBranch.name
       );
-      expect(res.worstStatus).not.toEqual('unknown');
+      expect(res.worstStatus).not.toBe('unknown');
       expect(res.statuses).toEqual([mockCommitStatus, otherMockCommitStatus]);
       expect(httpMock.getTrace()).toMatchSnapshot();
     });

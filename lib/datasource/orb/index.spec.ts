@@ -1,6 +1,6 @@
 import { getPkgReleases } from '..';
 import * as httpMock from '../../../test/http-mock';
-import { id as datasource } from '.';
+import { OrbDatasource } from '.';
 
 const orbData = {
   data: {
@@ -25,15 +25,12 @@ const orbData = {
 
 const baseUrl = 'https://circleci.com';
 
-describe('datasource/orb', () => {
+const datasource = OrbDatasource.id;
+
+describe('datasource/orb/index', () => {
   describe('getReleases', () => {
     beforeEach(() => {
       jest.clearAllMocks();
-      httpMock.setup();
-    });
-
-    afterEach(() => {
-      httpMock.reset();
     });
 
     it('returns null for empty result', async () => {
@@ -97,7 +94,7 @@ describe('datasource/orb', () => {
         depName: 'hyper-expanse/library-release-workflows',
       });
       expect(res).toMatchSnapshot();
-      expect(res.homepage).toEqual('https://google.com');
+      expect(res.homepage).toBe('https://google.com');
       expect(httpMock.getTrace()).toMatchSnapshot();
     });
   });

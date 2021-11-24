@@ -1,6 +1,6 @@
 import chalk from 'chalk';
 import * as prettyStdout from './pretty-stdout';
-import { BunyanRecord } from './utils';
+import type { BunyanRecord } from './types';
 
 jest.mock('chalk', () =>
   ['bgRed', 'blue', 'gray', 'green', 'magenta', 'red'].reduce(
@@ -12,16 +12,16 @@ jest.mock('chalk', () =>
 describe('logger/pretty-stdout', () => {
   describe('getMeta(rec)', () => {
     it('returns empty string if null rec', () => {
-      expect(prettyStdout.getMeta(null as any)).toEqual('');
+      expect(prettyStdout.getMeta(null as any)).toBeEmptyString();
     });
     it('returns empty string if empty rec', () => {
-      expect(prettyStdout.getMeta({} as any)).toEqual('');
+      expect(prettyStdout.getMeta({} as any)).toBeEmptyString();
     });
     it('returns empty string if no meta fields', () => {
       const rec = {
         foo: 'bar',
       };
-      expect(prettyStdout.getMeta(rec as any)).toEqual('');
+      expect(prettyStdout.getMeta(rec as any)).toBeEmptyString();
     });
     it('supports single meta', () => {
       const rec = {
@@ -46,17 +46,17 @@ describe('logger/pretty-stdout', () => {
   });
   describe('getDetails(rec)', () => {
     it('returns empty string if null rec', () => {
-      expect(prettyStdout.getDetails(null as any)).toEqual('');
+      expect(prettyStdout.getDetails(null as any)).toBeEmptyString();
     });
     it('returns empty string if empty rec', () => {
-      expect(prettyStdout.getDetails({} as any)).toEqual('');
+      expect(prettyStdout.getDetails({} as any)).toBeEmptyString();
     });
     it('returns empty string if all are meta fields', () => {
       const rec = {
         branch: 'bar',
         v: 0,
       };
-      expect(prettyStdout.getDetails(rec as any)).toEqual('');
+      expect(prettyStdout.getDetails(rec as any)).toBeEmptyString();
     });
     it('supports a config', () => {
       const rec = {
@@ -66,7 +66,9 @@ describe('logger/pretty-stdout', () => {
           d: ['e', 'f'],
         },
       };
-      expect(prettyStdout.getDetails(rec as any)).toMatchSnapshot();
+      expect(prettyStdout.getDetails(rec as any)).toEqual(
+        `       "config": {"a": "b", "d": ["e", "f"]}\n`
+      );
     });
   });
   describe('formatRecord(rec)', () => {
@@ -86,7 +88,13 @@ describe('logger/pretty-stdout', () => {
           d: ['e', 'f'],
         },
       };
-      expect(prettyStdout.formatRecord(rec)).toMatchSnapshot();
+      expect(prettyStdout.formatRecord(rec)).toEqual(
+        [
+          `TRACE: test message`,
+          `       "config": {"a": "b", "d": ["e", "f"]}`,
+          ``,
+        ].join('\n')
+      );
     });
   });
 });

@@ -1,5 +1,5 @@
 import { RenovateConfig, getConfig } from '../../../../../test/util';
-import { PackageFile } from '../../../../manager/common';
+import type { PackageFile } from '../../../../manager/types';
 import { getDepWarnings, getErrors, getWarnings } from './errors-warnings';
 
 describe('workers/repository/onboarding/pr/errors-warnings', () => {
@@ -12,12 +12,22 @@ describe('workers/repository/onboarding/pr/errors-warnings', () => {
     it('returns warning text', () => {
       config.warnings = [
         {
-          depName: 'foo',
+          topic: 'foo',
           message: 'Failed to look up dependency',
         },
       ];
       const res = getWarnings(config);
-      expect(res).toMatchSnapshot();
+      expect(res).toMatchInlineSnapshot(`
+        "
+        # Warnings (1)
+
+        Please correct - or verify that you can safely ignore - these warnings before you merge this PR.
+
+        -   \`foo\`: Failed to look up dependency
+
+        ---
+        "
+      `);
     });
   });
   describe('getDepWarnings()', () => {
@@ -31,7 +41,7 @@ describe('workers/repository/onboarding/pr/errors-warnings', () => {
             packageFile: 'package.json',
             deps: [
               {
-                warnings: [{ message: 'Warning 1', depName: undefined }],
+                warnings: [{ message: 'Warning 1', topic: undefined }],
               },
               {},
             ],
@@ -40,7 +50,7 @@ describe('workers/repository/onboarding/pr/errors-warnings', () => {
             packageFile: 'backend/package.json',
             deps: [
               {
-                warnings: [{ message: 'Warning 1', depName: undefined }],
+                warnings: [{ message: 'Warning 1', topic: undefined }],
               },
             ],
           },
@@ -50,14 +60,28 @@ describe('workers/repository/onboarding/pr/errors-warnings', () => {
             packageFile: 'Dockerfile',
             deps: [
               {
-                warnings: [{ message: 'Warning 2', depName: undefined }],
+                warnings: [{ message: 'Warning 2', topic: undefined }],
               },
             ],
           },
         ],
       };
       const res = getDepWarnings(packageFiles);
-      expect(res).toMatchSnapshot();
+      expect(res).toMatchInlineSnapshot(`
+        "
+        ---
+
+        ### ⚠ Dependency Lookup Warnings ⚠
+
+        Please correct - or verify that you can safely ignore - these lookup failures before you merge this PR.
+
+        -   \`Warning 1\`
+        -   \`Warning 2\`
+
+        Files affected: \`package.json\`, \`backend/package.json\`, \`Dockerfile\`
+
+        "
+      `);
     });
   });
   describe('getErrors()', () => {
@@ -69,12 +93,22 @@ describe('workers/repository/onboarding/pr/errors-warnings', () => {
     it('returns error text', () => {
       config.errors = [
         {
-          depName: 'renovate.json',
+          topic: 'renovate.json',
           message: 'Failed to parse',
         },
       ];
       const res = getErrors(config);
-      expect(res).toMatchSnapshot();
+      expect(res).toMatchInlineSnapshot(`
+        "
+        # Errors (1)
+
+        Renovate has found errors that you should fix (in this branch) before finishing this PR.
+
+        -   \`renovate.json\`: Failed to parse
+
+        ---
+        "
+      `);
     });
   });
 });

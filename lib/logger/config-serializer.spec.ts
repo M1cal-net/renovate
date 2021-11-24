@@ -6,12 +6,16 @@ describe('logger/config-serializer', () => {
       nottoken: 'b',
       prBody: 'foo',
     };
-    expect(configSerializer(config)).toMatchSnapshot();
+    expect(configSerializer(config)).toMatchSnapshot({
+      prBody: '[Template]',
+    });
   });
   it('suppresses content', () => {
     const config = {
       content: {},
     };
-    expect(configSerializer(config)).toMatchSnapshot();
+    expect(configSerializer(config)).toMatchSnapshot({
+      content: '[content]',
+    });
   });
 });

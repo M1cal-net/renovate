@@ -1,13 +1,9 @@
-import { readFileSync } from 'fs';
-import { resolve } from 'upath';
+import { loadFixture } from '../../../test/util';
 import { extractPackageFile } from './extract';
 
-const pkgContent = readFileSync(
-  resolve(__dirname, `./__fixtures__/SamplePackage.swift`),
-  'utf8'
-);
+const pkgContent = loadFixture(`SamplePackage.swift`);
 
-describe('lib/manager/swift', () => {
+describe('manager/swift/index', () => {
   describe('extractPackageFile()', () => {
     it('returns null for empty content', () => {
       expect(extractPackageFile(null)).toBeNull();
@@ -105,32 +101,32 @@ describe('lib/manager/swift', () => {
         extractPackageFile(
           `dependencies:[.package(url:"https://github.com/vapor/vapor.git",from:"1.2.3")]`
         )
-      ).toMatchSnapshot();
+      ).toMatchSnapshot({ deps: [{ currentValue: 'from:"1.2.3"' }] });
       expect(
         extractPackageFile(
           `dependencies:[.package(url:"https://github.com/vapor/vapor.git","1.2.3"...)]`
         )
-      ).toMatchSnapshot();
+      ).toMatchSnapshot({ deps: [{ currentValue: '"1.2.3"...' }] });
       expect(
         extractPackageFile(
           `dependencies:[.package(url:"https://github.com/vapor/vapor.git","1.2.3"..."1.2.4")]`
         )
-      ).toMatchSnapshot();
+      ).toMatchSnapshot({ deps: [{ currentValue: '"1.2.3"..."1.2.4"' }] });
       expect(
         extractPackageFile(
           `dependencies:[.package(url:"https://github.com/vapor/vapor.git","1.2.3"..<"1.2.4")]`
         )
-      ).toMatchSnapshot();
+      ).toMatchSnapshot({ deps: [{ currentValue: '"1.2.3"..<"1.2.4"' }] });
       expect(
         extractPackageFile(
           `dependencies:[.package(url:"https://github.com/vapor/vapor.git",..."1.2.3")]`
         )
-      ).toMatchSnapshot();
+      ).toMatchSnapshot({ deps: [{ currentValue: '..."1.2.3"' }] });
       expect(
         extractPackageFile(
           `dependencies:[.package(url:"https://github.com/vapor/vapor.git",..<"1.2.3")]`
         )
-      ).toMatchSnapshot();
+      ).toMatchSnapshot({ deps: [{ currentValue: '..<"1.2.3"' }] });
     });
     it('parses multiple packages', () => {
       expect(extractPackageFile(pkgContent)).toMatchSnapshot();

@@ -1,11 +1,13 @@
+import is from '@sindresorhus/is';
+import { getGlobalConfig } from '../../../config/global';
 import { SYSTEM_INSUFFICIENT_MEMORY } from '../../../constants/error-messages';
 import { getPkgReleases } from '../../../datasource';
 import { logger } from '../../../logger';
 import * as versioning from '../../../versioning';
+import { regEx } from '../../regex';
 import { ensureTrailingSlash } from '../../url';
 import {
   DockerOptions,
-  ExecConfig,
   Opt,
   VolumeOption,
   VolumesPair,
@@ -14,7 +16,7 @@ import {
 
 const prefetchedImages = new Set<string>();
 
-async function prefetchDockerImage(taggedImage: string): Promise<void> {
+export async function prefetchDockerImage(taggedImage: string): Promise<void> {
   if (prefetchedImages.has(taggedImage)) {
     logger.debug(`Docker image is already prefetched: ${taggedImage}`);
   } else {
@@ -30,12 +32,12 @@ export function resetPrefetchedImages(): void {
 }
 
 function expandVolumeOption(x: VolumeOption): VolumesPair | null {
-  if (typeof x === 'string') {
+  if (is.nonEmptyString(x)) {
     return [x, x];
   }
   if (Array.isArray(x) && x.length === 2) {
     const [from, to] = x;
-    if (typeof from === 'string' && typeof to === 'string') {
+    if (is.nonEmptyString(from) && is.nonEmptyString(to)) {
       return [from, to];
     }
   }
@@ -66,40 +68,47 @@ function prepareCommands(commands: Opt<string>[]): string[] {
   return commands.filter((command) => command && typeof command === 'string');
 }
 
-async function getDockerTag(
+export async function getDockerTag(
   depName: string,
   constraint: string,
   scheme: string
 ): Promise<string> {
-  // TODO: fixme
-  // eslint-disable-next-line @typescript-eslint/unbound-method
-  const { isValid, isVersion, matches, sortVersions } = versioning.get(scheme);
+  const ver = versioning.get(scheme);
 
-  if (!isValid(constraint)) {
+  if (!ver.isValid(constraint)) {
     logger.warn({ constraint }, `Invalid ${scheme} version constraint`);
     return 'latest';
   }
 
   logger.debug(
-    { constraint },
-    `Found ${scheme} version constraint - checking for a compatible ${depName} image to use`
+    { depName, scheme, constraint },
+    `Found version constraint - checking for a compatible image to use`
   );
-  const imageReleases = await getPkgReleases({ datasource: 'docker', depName });
+  const imageReleases = await getPkgReleases({
+    datasource: 'docker',
+    depName,
+    versioning: scheme,
+  });
   if (imageReleases?.releases) {
     let versions = imageReleases.releases.map((release) => release.version);
     versions = versions.filter(
-      (version) => isVersion(version) && matches(version, constraint)
+      (version) => ver.isVersion(version) && ver.matches(version, constraint)
     );
-    versions = versions.sort(sortVersions);
+    // Prefer stable versions over unstable, even if the range satisfies both types
+    if (!versions.every((version) => ver.isStable(version))) {
+      logger.debug('Filtering out unstable versions');
+      versions = versions.filter((version) => ver.isStable(version));
+    }
+    versions = versions.sort(ver.sortVersions.bind(ver));
     if (versions.length) {
       const version = versions.pop();
       logger.debug(
-        { constraint, version },
-        `Found compatible ${scheme} version`
+        { depName, scheme, constraint, version },
+        `Found compatible image version`
       );
       return version;
     }
-  } /* istanbul ignore next */ else {
+  } else {
     logger.error(`No ${depName} releases found`);
     return 'latest';
   }
@@ -110,19 +119,25 @@ async function getDockerTag(
   return 'latest';
 }
 
-function getContainerName(image: string): string {
-  return image.replace(/\//g, '_');
+function getContainerName(image: string, prefix?: string): string {
+  return `${prefix || 'renovate_'}${image}`.replace(regEx(/\//g), '_');
 }
 
-export async function removeDockerContainer(image: string): Promise<void> {
-  const containerName = getContainerName(image);
+function getContainerLabel(prefix: string): string {
+  return `${prefix || 'renovate_'}child`;
+}
+
+export async function removeDockerContainer(
+  image: string,
+  prefix: string
+): Promise<void> {
+  const containerName = getContainerName(image, prefix);
   let cmd = `docker ps --filter name=${containerName} -aq`;
   try {
     const res = await rawExec(cmd, {
       encoding: 'utf-8',
     });
     const containerId = res?.stdout?.trim() || '';
-    // istanbul ignore if
     if (containerId.length) {
       logger.debug({ containerId }, 'Removing container');
       cmd = `docker rm -f ${containerId}`;
@@ -132,21 +147,28 @@ export async function removeDockerContainer(image: string): Promise<void> {
     } else {
       logger.trace({ image, containerName }, 'No running containers to remove');
     }
-  } catch (err) /* istanbul ignore next */ {
-    logger.trace({ err }, 'removeDockerContainer err');
-    logger.info(
-      { image, containerName, cmd },
+  } catch (err) {
+    logger.warn(
+      { image, containerName, cmd, err },
       'Could not remove Docker container'
     );
   }
 }
 
-// istanbul ignore next
 export async function removeDanglingContainers(): Promise<void> {
+  const { binarySource, dockerChildPrefix } = getGlobalConfig();
+  if (binarySource !== 'docker') {
+    return;
+  }
+
   try {
-    const res = await rawExec(`docker ps --filter label=renovate_child -aq`, {
-      encoding: 'utf-8',
-    });
+    const containerLabel = getContainerLabel(dockerChildPrefix);
+    const res = await rawExec(
+      `docker ps --filter label=${containerLabel} -aq`,
+      {
+        encoding: 'utf-8',
+      }
+    );
     if (res?.stdout?.trim().length) {
       const containerIds = res.stdout
         .trim()
@@ -160,7 +182,7 @@ export async function removeDanglingContainers(): Promise<void> {
     } else {
       logger.debug('No dangling containers to remove');
     }
-  } catch (err) /* istanbul ignore next */ {
+  } catch (err) {
     if (err.errno === 'ENOMEM') {
       throw new Error(SYSTEM_INSUFFICIENT_MEMORY);
     }
@@ -174,20 +196,25 @@ export async function removeDanglingContainers(): Promise<void> {
 
 export async function generateDockerCommand(
   commands: string[],
-  options: DockerOptions,
-  config: ExecConfig
+  options: DockerOptions
 ): Promise<string> {
   const { envVars, cwd, tagScheme, tagConstraint } = options;
   let image = options.image;
   const volumes = options.volumes || [];
   const preCommands = options.preCommands || [];
   const postCommands = options.postCommands || [];
-  const { localDir, cacheDir, dockerUser } = config;
-
+  const {
+    localDir,
+    cacheDir,
+    dockerUser,
+    dockerChildPrefix,
+    dockerImagePrefix,
+  } = getGlobalConfig();
   const result = ['docker run --rm'];
-  const containerName = getContainerName(image);
+  const containerName = getContainerName(image, dockerChildPrefix);
+  const containerLabel = getContainerLabel(dockerChildPrefix);
   result.push(`--name=${containerName}`);
-  result.push(`--label=renovate_child`);
+  result.push(`--label=${containerLabel}`);
   if (dockerUser) {
     result.push(`--user=${dockerUser}`);
   }
@@ -206,12 +233,7 @@ export async function generateDockerCommand(
     result.push(`-w "${cwd}"`);
   }
 
-  if (config.dockerImagePrefix) {
-    image = image.replace(
-      /^renovate\//,
-      ensureTrailingSlash(config.dockerImagePrefix)
-    );
-  }
+  image = `${ensureTrailingSlash(dockerImagePrefix ?? 'renovate')}${image}`;
 
   let tag: string;
   if (options.tag) {
@@ -236,7 +258,7 @@ export async function generateDockerCommand(
     ...commands,
     ...prepareCommands(postCommands),
   ].join(' && ');
-  result.push(`bash -l -c "${bashCommand.replace(/"/g, '\\"')}"`); // lgtm [js/incomplete-sanitization]
+  result.push(`bash -l -c "${bashCommand.replace(regEx(/"/g), '\\"')}"`); // lgtm [js/incomplete-sanitization]
 
   return result.join(' ');
 }

@@ -1,6 +1,7 @@
+import { setGlobalConfig } from '../../config/global';
 import { getChildProcessEnv } from './env';
 
-describe('getChildProcess environment when trustlevel set to low', () => {
+describe('util/exec/env', () => {
   const envVars = [
     'HTTP_PROXY',
     'HTTPS_PROXY',
@@ -20,18 +21,16 @@ describe('getChildProcess environment when trustlevel set to low', () => {
     envVars.forEach((env) => delete process.env[env]);
   });
   it('returns default environment variables', () => {
-    expect(getChildProcessEnv()).toMatchInlineSnapshot(`
-      Object {
-        "DOCKER_HOST": "DOCKER_HOST",
-        "HOME": "HOME",
-        "HTTPS_PROXY": "HTTPS_PROXY",
-        "HTTP_PROXY": "HTTP_PROXY",
-        "LANG": "LANG",
-        "LC_ALL": "LC_ALL",
-        "NO_PROXY": "NO_PROXY",
-        "PATH": "PATH",
-      }
-    `);
+    expect(getChildProcessEnv()).toMatchObject({
+      DOCKER_HOST: 'DOCKER_HOST',
+      HOME: 'HOME',
+      HTTPS_PROXY: 'HTTPS_PROXY',
+      HTTP_PROXY: 'HTTP_PROXY',
+      LANG: 'LANG',
+      LC_ALL: 'LC_ALL',
+      NO_PROXY: 'NO_PROXY',
+      PATH: 'PATH',
+    });
   });
   it('returns environment variable only if defined', () => {
     delete process.env.PATH;
@@ -39,27 +38,24 @@ describe('getChildProcess environment when trustlevel set to low', () => {
   });
   it('returns custom environment variables if passed and defined', () => {
     process.env.FOOBAR = 'FOOBAR';
-    expect(getChildProcessEnv(['FOOBAR'])).toMatchInlineSnapshot(`
-      Object {
-        "DOCKER_HOST": "DOCKER_HOST",
-        "FOOBAR": "FOOBAR",
-        "HOME": "HOME",
-        "HTTPS_PROXY": "HTTPS_PROXY",
-        "HTTP_PROXY": "HTTP_PROXY",
-        "LANG": "LANG",
-        "LC_ALL": "LC_ALL",
-        "NO_PROXY": "NO_PROXY",
-        "PATH": "PATH",
-      }
-    `);
+    expect(getChildProcessEnv(['FOOBAR'])).toMatchObject({
+      DOCKER_HOST: 'DOCKER_HOST',
+      FOOBAR: 'FOOBAR',
+      HOME: 'HOME',
+      HTTPS_PROXY: 'HTTPS_PROXY',
+      HTTP_PROXY: 'HTTP_PROXY',
+      LANG: 'LANG',
+      LC_ALL: 'LC_ALL',
+      NO_PROXY: 'NO_PROXY',
+      PATH: 'PATH',
+    });
     delete process.env.LANG;
   });
 
   describe('getChildProcessEnv when trustlevel set to high', () => {
     it('returns process.env if trustlevel set to high', () => {
-      global.trustLevel = 'high';
+      setGlobalConfig({ exposeAllEnv: true });
       expect(getChildProcessEnv()).toMatchObject(process.env);
-      delete global.trustLevel;
     });
   });
 });

@@ -1,12 +1,12 @@
-import { platform } from '../../../platform';
 import { BranchStatus } from '../../../types';
 import { emojify } from '../../../util/emoji';
-import { BranchConfig } from '../../common';
+import { resolveBranchStatus } from '../../branch/status-checks';
+import type { BranchConfig } from '../../types';
 
 export async function getPrConfigDescription(
   config: BranchConfig
 ): Promise<string> {
-  let prBody = `\n\n---\n\n### Renovate configuration\n\n`;
+  let prBody = `\n\n---\n\n### Configuration\n\n`;
   prBody += emojify(`:date: **Schedule**: `);
   if (
     config.schedule &&
@@ -26,9 +26,9 @@ export async function getPrConfigDescription(
   prBody += '\n\n';
   prBody += emojify(':vertical_traffic_light: **Automerge**: ');
   if (config.automerge) {
-    const branchStatus = await platform.getBranchStatus(
+    const branchStatus = await resolveBranchStatus(
       config.branchName,
-      config.requiredStatusChecks
+      config.ignoreTests
     );
     // istanbul ignore if
     if (branchStatus === BranchStatus.red) {

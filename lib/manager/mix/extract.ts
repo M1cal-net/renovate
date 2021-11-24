@@ -1,12 +1,19 @@
-import * as datasourceHex from '../../datasource/hex';
+import { HexDatasource } from '../../datasource/hex';
 import { logger } from '../../logger';
 import { SkipReason } from '../../types';
-import { PackageDependency, PackageFile } from '../common';
+import { findLocalSiblingOrParent, localPathExists } from '../../util/fs';
+import { regEx } from '../../util/regex';
+import type { PackageDependency, PackageFile } from '../types';
 
-const depSectionRegExp = /defp\s+deps.*do/g;
-const depMatchRegExp = /{:(\w+),\s*([^:"]+)?:?\s*"([^"]+)",?\s*(organization: "(.*)")?.*}/gm;
+const depSectionRegExp = regEx(/defp\s+deps.*do/g);
+const depMatchRegExp = regEx(
+  /{:(\w+),\s*([^:"]+)?:?\s*"([^"]+)",?\s*(organization: "(.*)")?.*}/gm
+);
 
-export function extractPackageFile(content: string): PackageFile {
+export async function extractPackageFile(
+  content: string,
+  fileName: string
+): Promise<PackageFile | null> {
   logger.trace('mix.extractPackageFile()');
   const deps: PackageDependency[] = [];
   const contentArr = content.split('\n');
@@ -34,9 +41,9 @@ export function extractPackageFile(content: string): PackageFile {
             managerData: {},
           };
 
-          dep.datasource = datasource || datasourceHex.id;
+          dep.datasource = datasource || HexDatasource.id;
 
-          if (dep.datasource === datasourceHex.id) {
+          if (dep.datasource === HexDatasource.id) {
             dep.currentValue = currentValue;
             dep.lookupName = depName;
           }
@@ -45,7 +52,7 @@ export function extractPackageFile(content: string): PackageFile {
             dep.lookupName += ':' + organization;
           }
 
-          if (dep.datasource !== datasourceHex.id) {
+          if (dep.datasource !== HexDatasource.id) {
             dep.skipReason = SkipReason.NonHexDeptypes;
           }
 
@@ -61,5 +68,12 @@ export function extractPackageFile(content: string): PackageFile {
       } while (depMatch);
     }
   }
-  return { deps };
+  const res: PackageFile = { deps };
+  const lockFileName =
+    (await findLocalSiblingOrParent(fileName, 'mix.lock')) || 'mix.lock';
+  // istanbul ignore if
+  if (await localPathExists(lockFileName)) {
+    res.lockFiles = [lockFileName];
+  }
+  return res;
 }

@@ -1,37 +1,40 @@
 import is from '@sindresorhus/is';
-import equal from 'fast-deep-equal';
+import { dequal } from 'dequal';
 import { HOST_DISABLED } from '../constants/error-messages';
 import { logger } from '../logger';
 import { ExternalHostError } from '../types/errors/external-host-error';
 import * as memCache from '../util/cache/memory';
+import * as packageCache from '../util/cache/package';
 import { clone } from '../util/clone';
 import { regEx } from '../util/regex';
+import { trimTrailingSlash } from '../util/url';
 import * as allVersioning from '../versioning';
-import datasources from './api.generated';
-import {
-  Datasource,
+import datasources from './api';
+import { addMetaData } from './metadata';
+import type {
+  DatasourceApi,
   DigestConfig,
   GetPkgReleasesConfig,
   GetReleasesConfig,
-  Release,
   ReleaseResult,
-} from './common';
-import { addMetaData } from './metadata';
+} from './types';
 
-export * from './common';
+export * from './types';
+export { isGetPkgReleasesConfig } from './common';
 
-export const getDatasources = (): Map<string, Datasource> => datasources;
+export const getDatasources = (): Map<string, DatasourceApi> => datasources;
 export const getDatasourceList = (): string[] => Array.from(datasources.keys());
 
 const cacheNamespace = 'datasource-releases';
 
-function load(datasource: string): Datasource {
+function getDatasourceFor(datasource: string): DatasourceApi {
   return datasources.get(datasource);
 }
 
 type GetReleasesInternalConfig = GetReleasesConfig & GetPkgReleasesConfig;
 
-function logError(datasource, lookupName, err): void {
+// TODO: fix error Type
+function logError(datasource: string, lookupName: string, err: any): void {
   const { statusCode, code: errCode, url } = err;
   if (statusCode === 404) {
     logger.debug({ datasource, lookupName, url }, 'Datasource 404');
@@ -48,17 +51,38 @@ function logError(datasource, lookupName, err): void {
 }
 
 async function getRegistryReleases(
-  datasource: Datasource,
+  datasource: DatasourceApi,
   config: GetReleasesConfig,
   registryUrl: string
 ): Promise<ReleaseResult> {
+  const cacheKey = `${datasource.id} ${registryUrl} ${config.lookupName}`;
+  if (datasource.caching) {
+    const cachedResult = await packageCache.get<ReleaseResult>(
+      cacheNamespace,
+      cacheKey
+    );
+    // istanbul ignore if
+    if (cachedResult) {
+      logger.debug({ cacheKey }, 'Returning cached datasource response');
+      return cachedResult;
+    }
+  }
   const res = await datasource.getReleases({ ...config, registryUrl });
+  if (res?.releases.length) {
+    res.registryUrl ??= registryUrl;
+  }
+  // cache non-null responses unless marked as private
+  if (datasource.caching && res && !res.isPrivate) {
+    logger.trace({ cacheKey }, 'Caching datasource response');
+    const cacheMinutes = 15;
+    await packageCache.set(cacheNamespace, cacheKey, res, cacheMinutes);
+  }
   return res;
 }
 
 function firstRegistry(
   config: GetReleasesInternalConfig,
-  datasource: Datasource,
+  datasource: DatasourceApi,
   registryUrls: string[]
 ): Promise<ReleaseResult> {
   if (registryUrls.length > 1) {
@@ -73,11 +97,11 @@ function firstRegistry(
 
 async function huntRegistries(
   config: GetReleasesInternalConfig,
-  datasource: Datasource,
+  datasource: DatasourceApi,
   registryUrls: string[]
 ): Promise<ReleaseResult> {
   let res: ReleaseResult;
-  let caughtError;
+  let caughtError: Error;
   for (const registryUrl of registryUrls) {
     try {
       res = await getRegistryReleases(datasource, config, registryUrl);
@@ -104,19 +128,28 @@ async function huntRegistries(
 
 async function mergeRegistries(
   config: GetReleasesInternalConfig,
-  datasource: Datasource,
+  datasource: DatasourceApi,
   registryUrls: string[]
 ): Promise<ReleaseResult> {
   let combinedRes: ReleaseResult;
-  let caughtError;
+  let caughtError: Error;
   for (const registryUrl of registryUrls) {
     try {
       const res = await getRegistryReleases(datasource, config, registryUrl);
-      if (combinedRes) {
-        combinedRes = { ...res, ...combinedRes };
-        combinedRes.releases = [...combinedRes.releases, ...res.releases];
-      } else {
-        combinedRes = res;
+      if (res) {
+        if (combinedRes) {
+          for (const existingRelease of combinedRes.releases || []) {
+            existingRelease.registryUrl = combinedRes.registryUrl;
+          }
+          for (const additionalRelease of res.releases || []) {
+            additionalRelease.registryUrl = res.registryUrl;
+          }
+          combinedRes = { ...res, ...combinedRes };
+          delete combinedRes.registryUrl;
+          combinedRes.releases = [...combinedRes.releases, ...res.releases];
+        } else {
+          combinedRes = res;
+        }
       }
     } catch (err) {
       if (err instanceof ExternalHostError) {
@@ -148,53 +181,61 @@ async function mergeRegistries(
 }
 
 function resolveRegistryUrls(
-  datasource: Datasource,
+  datasource: DatasourceApi,
   extractedUrls: string[]
 ): string[] {
-  const { defaultRegistryUrls = [], appendRegistryUrls = [] } = datasource;
+  const { defaultRegistryUrls = [] } = datasource;
+  if (!datasource.customRegistrySupport) {
+    if (is.nonEmptyArray(extractedUrls)) {
+      logger.warn(
+        { datasource: datasource.id, registryUrls: extractedUrls },
+        'Custom registries are not allowed for this datasource and will be ignored'
+      );
+    }
+    return defaultRegistryUrls;
+  }
   const customUrls = extractedUrls?.filter(Boolean);
   let registryUrls: string[];
   if (is.nonEmptyArray(customUrls)) {
-    registryUrls = [...extractedUrls, ...appendRegistryUrls];
+    registryUrls = [...customUrls];
   } else {
-    registryUrls = [...defaultRegistryUrls, ...appendRegistryUrls];
+    registryUrls = [...defaultRegistryUrls];
   }
-  return registryUrls.filter(Boolean);
+  return registryUrls.filter(Boolean).map(trimTrailingSlash);
+}
+
+export function getDefaultVersioning(datasourceName: string): string {
+  const datasource = getDatasourceFor(datasourceName);
+  // istanbul ignore if: wrong regex manager config?
+  if (!datasource) {
+    logger.warn({ datasourceName }, 'Missing datasource!');
+  }
+  return datasource?.defaultVersioning || 'semver';
 }
 
 async function fetchReleases(
   config: GetReleasesInternalConfig
 ): Promise<ReleaseResult | null> {
   const { datasource: datasourceName } = config;
-  if (!datasourceName || !datasources.has(datasourceName)) {
+  if (!datasourceName || getDatasourceFor(datasourceName) === undefined) {
     logger.warn('Unknown datasource: ' + datasourceName);
     return null;
   }
-  const datasource = load(datasourceName);
+  const datasource = getDatasourceFor(datasourceName);
   const registryUrls = resolveRegistryUrls(datasource, config.registryUrls);
   let dep: ReleaseResult = null;
+  const registryStrategy = datasource.registryStrategy || 'hunt';
   try {
-    if (datasource.registryStrategy) {
-      // istanbul ignore if
-      if (!registryUrls.length) {
-        logger.warn(
-          { datasource: datasourceName, depName: config.depName },
-          'Missing registryUrls for registryStrategy'
-        );
-        return null;
-      }
-      if (datasource.registryStrategy === 'first') {
+    if (is.nonEmptyArray(registryUrls)) {
+      if (registryStrategy === 'first') {
         dep = await firstRegistry(config, datasource, registryUrls);
-      } else if (datasource.registryStrategy === 'hunt') {
+      } else if (registryStrategy === 'hunt') {
         dep = await huntRegistries(config, datasource, registryUrls);
-      } else if (datasource.registryStrategy === 'merge') {
+      } else if (registryStrategy === 'merge') {
         dep = await mergeRegistries(config, datasource, registryUrls);
       }
     } else {
-      dep = await datasource.getReleases({
-        ...config,
-        registryUrls,
-      });
+      dep = await datasource.getReleases(config);
     }
   } catch (err) {
     if (err.message === HOST_DISABLED || err.err?.message === HOST_DISABLED) {
@@ -205,7 +246,7 @@ async function fetchReleases(
     }
     logError(datasource.id, config.lookupName, err);
   }
-  if (!dep || equal(dep, { releases: [] })) {
+  if (!dep || dequal(dep, { releases: [] })) {
     return null;
   }
   addMetaData(dep, datasourceName, config.lookupName);
@@ -273,17 +314,16 @@ export async function getPkgReleases(
       })
       .filter(Boolean);
   }
-  // Filter by versioning
-  const version = allVersioning.get(config.versioning);
-  // Return a sorted list of valid Versions
-  function sortReleases(release1: Release, release2: Release): number {
-    return version.sortVersions(release1.version, release2.version);
-  }
-  if (res.releases) {
-    res.releases = res.releases
-      .filter((release) => version.isVersion(release.version))
-      .sort(sortReleases);
-  }
+  // Use the datasource's default versioning if none is configured
+  const versioning =
+    config.versioning || getDefaultVersioning(config.datasource);
+  const version = allVersioning.get(versioning);
+
+  // Filter and sort valid versions
+  res.releases = res.releases
+    .filter((release) => version.isVersion(release.version))
+    .sort((a, b) => version.sortVersions(a.version, b.version));
+
   // Filter versions for uniqueness
   res.releases = res.releases.filter(
     (filterRelease, filterIndex) =>
@@ -291,30 +331,58 @@ export async function getPkgReleases(
         (findRelease) => findRelease.version === filterRelease.version
       ) === filterIndex
   );
+  // Filter releases for compatibility
+  for (const [constraintName, constraintValue] of Object.entries(
+    config.constraints || {}
+  )) {
+    // Currently we only support if the constraint is a plain version
+    // TODO: Support range/range compatibility filtering #8476
+    if (version.isVersion(constraintValue)) {
+      res.releases = res.releases.filter((release) => {
+        if (!is.nonEmptyArray(release.constraints?.[constraintName])) {
+          // A release with no constraints is OK
+          return true;
+        }
+        return release.constraints[constraintName].some(
+          // If any of the release's constraints match, then it's OK
+          (releaseConstraint) =>
+            !releaseConstraint ||
+            version.matches(constraintValue, releaseConstraint)
+        );
+      });
+    }
+  }
+  // Strip constraints from releases result
+  res.releases.forEach((release) => {
+    delete release.constraints;
+  });
   return res;
 }
 
 export function supportsDigests(config: DigestConfig): boolean {
-  return 'getDigest' in load(config.datasource);
+  return 'getDigest' in getDatasourceFor(config.datasource);
 }
 
 export function getDigest(
   config: DigestConfig,
   value?: string
 ): Promise<string | null> {
-  const datasource = load(config.datasource);
+  const datasource = getDatasourceFor(config.datasource);
   const lookupName = config.lookupName || config.depName;
   const registryUrls = resolveRegistryUrls(datasource, config.registryUrls);
-  return datasource.getDigest(
-    { lookupName, registryUrl: registryUrls[0] },
-    value
-  );
+  const digestConfig: DigestConfig = {
+    registryUrl: registryUrls[0],
+    currentValue: config.currentValue,
+    currentDigest: config.currentDigest,
+    lookupName,
+  };
+  return datasource.getDigest(digestConfig, value);
 }
 
 export function getDefaultConfig(
   datasource: string
 ): Promise<Record<string, unknown>> {
-  const loadedDatasource = load(datasource);
+  const loadedDatasource = getDatasourceFor(datasource);
   return Promise.resolve<Record<string, unknown>>(
     loadedDatasource?.defaultConfig || Object.create({})
   );

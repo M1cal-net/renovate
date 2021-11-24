@@ -1,4 +1,4 @@
-import { UpdateType } from '../../../config';
+import type { UpdateType } from '../../../config/types';
 import { sortBranches } from './sort';
 
 describe('workers/repository/process/sort', () => {
@@ -23,6 +23,7 @@ describe('workers/repository/process/sort', () => {
         },
       ];
       sortBranches(branches);
+      // FIXME: explicit assert condition
       expect(branches).toMatchSnapshot();
     });
     it('sorts based on prPriority', () => {
@@ -49,6 +50,35 @@ describe('workers/repository/process/sort', () => {
         },
       ];
       sortBranches(branches);
+      // FIXME: explicit assert condition
+      expect(branches).toMatchSnapshot();
+    });
+    it('sorts based on isVulnerabilityAlert', () => {
+      const branches = [
+        {
+          updateType: 'major' as UpdateType,
+          prTitle: 'some major update',
+          prPriority: 1,
+        },
+        {
+          updateType: 'pin' as UpdateType,
+          prTitle: 'some pin',
+          prPriority: -1,
+        },
+        {
+          updateType: 'pin' as UpdateType,
+          prTitle: 'some other pin',
+          prPriority: 0,
+        },
+        {
+          updateType: 'minor' as UpdateType,
+          prTitle: 'a minor update',
+          prPriority: -1,
+          isVulnerabilityAlert: true,
+        },
+      ];
+      sortBranches(branches);
+      // FIXME: explicit assert condition
       expect(branches).toMatchSnapshot();
     });
   });

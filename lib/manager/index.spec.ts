@@ -1,8 +1,10 @@
 import { loadModules } from '../util/modules';
-import { ManagerApi } from './common';
+import type { ManagerApi } from './types';
 import * as manager from '.';
 
-describe('manager', () => {
+jest.mock('../util/fs');
+
+describe('manager/index', () => {
   describe('get()', () => {
     it('gets something', () => {
       expect(manager.get('dockerfile', 'extractPackageFile')).not.toBeNull();
@@ -27,6 +29,9 @@ describe('manager', () => {
       if (!module.extractPackageFile && !module.extractAllPackageFiles) {
         return false;
       }
+      if (Object.values(module).some((v) => v === undefined)) {
+        return false;
+      }
       return true;
     }
     const mgrs = manager.getManagers();
@@ -36,8 +41,14 @@ describe('manager', () => {
 
     for (const name of mgrs.keys()) {
       const mgr = mgrs.get(name);
-      expect(validate(mgr)).toBe(true);
+      expect(validate(mgr)).toBeTrue();
     }
+  });
+
+  describe('detectGlobalConfig()', () => {
+    it('iterates through managers', async () => {
+      expect(await manager.detectAllGlobalConfig()).toEqual({});
+    });
   });
 
   describe('extractAllPackageFiles()', () => {
@@ -81,26 +92,6 @@ describe('manager', () => {
       });
 
       expect(manager.extractPackageFile('dummy', null)).not.toBeNull();
-    });
-    afterEach(() => {
-      manager.getManagers().delete('dummy');
-    });
-  });
-
-  describe('getPackageUpdates', () => {
-    it('returns null', () => {
-      manager.getManagers().set('dummy', {
-        defaultConfig: {},
-      });
-      expect(manager.getPackageUpdates('unknown', null)).toBeNull();
-      expect(manager.getPackageUpdates('dummy', null)).toBeNull();
-    });
-    it('returns non-null', () => {
-      manager.getManagers().set('dummy', {
-        defaultConfig: {},
-        getPackageUpdates: () => Promise.resolve([]),
-      });
-      expect(manager.getPackageUpdates('dummy', {} as any)).not.toBeNull();
     });
     afterEach(() => {
       manager.getManagers().delete('dummy');

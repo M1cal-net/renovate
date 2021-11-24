@@ -2,40 +2,43 @@ import { exec as _exec } from 'child_process';
 import _fs from 'fs-extra';
 import { join } from 'upath';
 import { envMock, mockExecAll } from '../../../test/exec-util';
-import { git, mocked } from '../../../test/util';
-import { setExecConfig } from '../../util/exec';
-import { BinarySource } from '../../util/exec/common';
+import { mocked } from '../../../test/util';
+import { setGlobalConfig } from '../../config/global';
+import type { RepoGlobalConfig } from '../../config/types';
 import * as docker from '../../util/exec/docker';
 import * as _env from '../../util/exec/env';
+import type { UpdateArtifactsConfig } from '../types';
 import * as helmv3 from './artifacts';
 
 jest.mock('fs-extra');
 jest.mock('child_process');
 jest.mock('../../util/exec/env');
-jest.mock('../../util/git');
 jest.mock('../../util/http');
 
 const fs: jest.Mocked<typeof _fs> = _fs as any;
 const exec: jest.Mock<typeof _exec> = _exec as any;
 const env = mocked(_env);
 
-const config = {
-  // `join` fixes Windows CI
-  localDir: join('/tmp/github/some/repo'),
-  dockerUser: 'foobar',
+const adminConfig: RepoGlobalConfig = {
+  localDir: join('/tmp/github/some/repo'), // `join` fixes Windows CI
 };
 
-describe('.updateArtifacts()', () => {
-  beforeEach(async () => {
+const config: UpdateArtifactsConfig = {};
+
+describe('manager/helmv3/artifacts', () => {
+  beforeEach(() => {
     jest.resetAllMocks();
     jest.resetModules();
 
     env.getChildProcessEnv.mockReturnValue(envMock.basic);
-    await setExecConfig(config);
+    setGlobalConfig(adminConfig);
     docker.resetPrefetchedImages();
   });
+  afterEach(() => {
+    setGlobalConfig();
+  });
   it('returns null if no Chart.lock found', async () => {
-    const updatedDeps = ['dep1'];
+    const updatedDeps = [{ depName: 'dep1' }];
     expect(
       await helmv3.updateArtifacts({
         packageFileName: 'Chart.yaml',
@@ -59,7 +62,7 @@ describe('.updateArtifacts()', () => {
     fs.readFile.mockResolvedValueOnce('Current Chart.lock' as any);
     const execSnapshots = mockExecAll(exec);
     fs.readFile.mockResolvedValueOnce('Current Chart.lock' as any);
-    const updatedDeps = ['dep1'];
+    const updatedDeps = [{ depName: 'dep1' }];
     expect(
       await helmv3.updateArtifacts({
         packageFileName: 'Chart.yaml',
@@ -71,10 +74,10 @@ describe('.updateArtifacts()', () => {
     expect(execSnapshots).toMatchSnapshot();
   });
   it('returns updated Chart.lock', async () => {
-    git.getFile.mockResolvedValueOnce('Old Chart.lock');
+    fs.readFile.mockResolvedValueOnce('Old Chart.lock' as never);
     const execSnapshots = mockExecAll(exec);
-    fs.readFile.mockResolvedValueOnce('New Chart.lock' as any);
-    const updatedDeps = ['dep1'];
+    fs.readFile.mockResolvedValueOnce('New Chart.lock' as never);
+    const updatedDeps = [{ depName: 'dep1' }];
     expect(
       await helmv3.updateArtifacts({
         packageFileName: 'Chart.yaml',
@@ -82,14 +85,16 @@ describe('.updateArtifacts()', () => {
         newPackageFileContent: '{}',
         config,
       })
-    ).not.toBeNull();
+    ).toMatchSnapshot([
+      { file: { contents: 'New Chart.lock', name: 'Chart.lock' } },
+    ]);
     expect(execSnapshots).toMatchSnapshot();
   });
 
   it('returns updated Chart.lock for lockfile maintenance', async () => {
-    git.getFile.mockResolvedValueOnce('Old Chart.lock');
+    fs.readFile.mockResolvedValueOnce('Old Chart.lock' as never);
     const execSnapshots = mockExecAll(exec);
-    fs.readFile.mockResolvedValueOnce('New Chart.lock' as any);
+    fs.readFile.mockResolvedValueOnce('New Chart.lock' as never);
     expect(
       await helmv3.updateArtifacts({
         packageFileName: 'Chart.yaml',
@@ -97,17 +102,18 @@ describe('.updateArtifacts()', () => {
         newPackageFileContent: '{}',
         config: { ...config, updateType: 'lockFileMaintenance' },
       })
-    ).not.toBeNull();
+    ).toMatchSnapshot([
+      { file: { contents: 'New Chart.lock', name: 'Chart.lock' } },
+    ]);
     expect(execSnapshots).toMatchSnapshot();
   });
 
   it('returns updated Chart.lock with docker', async () => {
-    jest.spyOn(docker, 'removeDanglingContainers').mockResolvedValueOnce();
-    await setExecConfig({ ...config, binarySource: BinarySource.Docker });
-    git.getFile.mockResolvedValueOnce('Old Chart.lock');
+    setGlobalConfig({ ...adminConfig, binarySource: 'docker' });
+    fs.readFile.mockResolvedValueOnce('Old Chart.lock' as never);
     const execSnapshots = mockExecAll(exec);
-    fs.readFile.mockResolvedValueOnce('New Chart.lock' as any);
-    const updatedDeps = ['dep1'];
+    fs.readFile.mockResolvedValueOnce('New Chart.lock' as never);
+    const updatedDeps = [{ depName: 'dep1' }];
     expect(
       await helmv3.updateArtifacts({
         packageFileName: 'Chart.yaml',
@@ -115,7 +121,9 @@ describe('.updateArtifacts()', () => {
         newPackageFileContent: '{}',
         config,
       })
-    ).not.toBeNull();
+    ).toMatchSnapshot([
+      { file: { contents: 'New Chart.lock', name: 'Chart.lock' } },
+    ]);
     expect(execSnapshots).toMatchSnapshot();
   });
   it('catches errors', async () => {
@@ -123,7 +131,7 @@ describe('.updateArtifacts()', () => {
     fs.outputFile.mockImplementationOnce(() => {
       throw new Error('not found');
     });
-    const updatedDeps = ['dep1'];
+    const updatedDeps = [{ depName: 'dep1' }];
     expect(
       await helmv3.updateArtifacts({
         packageFileName: 'Chart.yaml',
@@ -131,6 +139,56 @@ describe('.updateArtifacts()', () => {
         newPackageFileContent: '{}',
         config,
       })
-    ).toMatchSnapshot();
+    ).toMatchSnapshot([
+      {
+        artifactError: {
+          lockFile: 'Chart.lock',
+          stderr: 'not found',
+        },
+      },
+    ]);
+  });
+
+  it('sets repositories from aliases', async () => {
+    fs.readFile.mockResolvedValueOnce('Old Chart.lock' as never);
+    const execSnapshots = mockExecAll(exec);
+    fs.readFile.mockResolvedValueOnce('New Chart.lock' as never);
+    expect(
+      await helmv3.updateArtifacts({
+        packageFileName: 'Chart.yaml',
+        updatedDeps: [],
+        newPackageFileContent: '{}',
+        config: {
+          ...config,
+          updateType: 'lockFileMaintenance',
+          aliases: { stable: 'the_stable_url', repo1: 'the_repo1_url' },
+        },
+      })
+    ).toMatchSnapshot([
+      { file: { contents: 'New Chart.lock', name: 'Chart.lock' } },
+    ]);
+    expect(execSnapshots).toMatchSnapshot();
+  });
+
+  it('sets repositories from aliases with docker', async () => {
+    setGlobalConfig({ ...adminConfig, binarySource: 'docker' });
+    fs.readFile.mockResolvedValueOnce('Old Chart.lock' as never);
+    const execSnapshots = mockExecAll(exec);
+    fs.readFile.mockResolvedValueOnce('New Chart.lock' as never);
+    expect(
+      await helmv3.updateArtifacts({
+        packageFileName: 'Chart.yaml',
+        updatedDeps: [],
+        newPackageFileContent: '{}',
+        config: {
+          ...config,
+          updateType: 'lockFileMaintenance',
+          aliases: { stable: 'the_stable_url', repo1: 'the_repo1_url' },
+        },
+      })
+    ).toMatchSnapshot([
+      { file: { contents: 'New Chart.lock', name: 'Chart.lock' } },
+    ]);
+    expect(execSnapshots).toMatchSnapshot();
   });
 });
