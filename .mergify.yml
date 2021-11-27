@@ -2,6 +2,6 @@ pull_request_rules:
   - name: Automatic merge on approval
     conditions:
       - "#approved-reviews-by>=1"
-    actions:
+    actions:monstro805
       merge:
         method: merge
