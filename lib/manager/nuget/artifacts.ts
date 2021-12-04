@@ -1,5 +1,7 @@
 import { join } from 'path';
-import { id } from '../../datasource/nuget';
+import { getAdminConfig } from '../../config/admin';
+import { TEMPORARY_ERROR } from '../../constants/error-messages';
+import { id, parseRegistryUrl } from '../../datasource/nuget';
 import { logger } from '../../logger';
 import { ExecOptions, exec } from '../../util/exec';
 import {
@@ -11,11 +13,11 @@ import {
   writeLocalFile,
 } from '../../util/fs';
 import * as hostRules from '../../util/host-rules';
-import {
+import type {
   UpdateArtifact,
   UpdateArtifactsConfig,
   UpdateArtifactsResult,
-} from '../common';
+} from '../types';
 import {
   getConfiguredRegistries,
   getDefaultRegistries,
@@ -27,8 +29,9 @@ async function addSourceCmds(
   config: UpdateArtifactsConfig,
   nugetConfigFile: string
 ): Promise<string[]> {
+  const { localDir } = getAdminConfig();
   const registries =
-    (await getConfiguredRegistries(packageFileName, config.localDir)) ||
+    (await getConfiguredRegistries(packageFileName, localDir)) ||
     getDefaultRegistries();
   const result = [];
   for (const registry of registries) {
@@ -36,7 +39,8 @@ async function addSourceCmds(
       hostType: id,
       url: registry.url,
     });
-    let addSourceCmd = `dotnet nuget add source ${registry.url} --configfile ${nugetConfigFile}`;
+    const registryInfo = parseRegistryUrl(registry.url);
+    let addSourceCmd = `dotnet nuget add source ${registryInfo.feedUrl} --configfile ${nugetConfigFile}`;
     if (registry.name) {
       // Add name for registry, if known.
       addSourceCmd += ` --name ${registry.name}`;
@@ -56,14 +60,13 @@ async function runDotnetRestore(
 ): Promise<void> {
   const execOptions: ExecOptions = {
     docker: {
-      image: 'renovate/dotnet',
+      image: 'dotnet',
     },
   };
 
-  const nugetConfigDir = await ensureCacheDir(
-    `./others/nuget/${getRandomString()}`
-  );
-  const nugetConfigFile = join(nugetConfigDir, 'nuget.config');
+  const nugetCacheDir = await ensureCacheDir('nuget');
+  const nugetConfigDir = join(nugetCacheDir, `${getRandomString()}`);
+  const nugetConfigFile = join(nugetConfigDir, `nuget.config`);
   await outputFile(
     nugetConfigFile,
     `<?xml version="1.0" encoding="utf-8"?>\n<configuration>\n</configuration>\n`
@@ -137,6 +140,10 @@ export async function updateArtifacts({
       },
     ];
   } catch (err) {
+    // istanbul ignore if
+    if (err.message === TEMPORARY_ERROR) {
+      throw err;
+    }
     logger.debug({ err }, 'Failed to generate lock file');
     return [
       {

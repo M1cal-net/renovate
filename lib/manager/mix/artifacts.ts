@@ -1,15 +1,18 @@
 import { quote } from 'shlex';
+import { TEMPORARY_ERROR } from '../../constants/error-messages';
 import { logger } from '../../logger';
-import { exec } from '../../util/exec';
-import { BinarySource } from '../../util/exec/common';
-import { readLocalFile, writeLocalFile } from '../../util/fs';
-import { UpdateArtifact, UpdateArtifactsResult } from '../common';
+import { ExecOptions, exec } from '../../util/exec';
+import {
+  getSiblingFileName,
+  readLocalFile,
+  writeLocalFile,
+} from '../../util/fs';
+import type { UpdateArtifact, UpdateArtifactsResult } from '../types';
 
 export async function updateArtifacts({
   packageFileName,
   updatedDeps,
   newPackageFileContent,
-  config,
 }: UpdateArtifact): Promise<UpdateArtifactsResult[] | null> {
   logger.debug(`mix.getArtifacts(${packageFileName})`);
   if (updatedDeps.length < 1) {
@@ -17,13 +20,7 @@ export async function updateArtifacts({
     return null;
   }
 
-  const cwd = config.localDir;
-  if (!cwd) {
-    logger.debug('No local dir specified');
-    return null;
-  }
-
-  const lockFileName = 'mix.lock';
+  const lockFileName = getSiblingFileName(packageFileName, 'mix.lock');
   try {
     await writeLocalFile(packageFileName, newPackageFileContent);
   } catch (err) {
@@ -44,26 +41,26 @@ export async function updateArtifacts({
     return null;
   }
 
-  const cmdParts =
-    config.binarySource === BinarySource.Docker
-      ? [
-          'docker',
-          'run',
-          '--rm',
-          `-v ${cwd}:${cwd}`,
-          `-w ${cwd}`,
-          'renovate/elixir mix',
-        ]
-      : ['mix'];
-  cmdParts.push('deps.update');
+  const execOptions: ExecOptions = {
+    cwdFile: packageFileName,
+    docker: { image: 'elixir' },
+  };
+  const command = [
+    'mix',
+    'deps.update',
+    ...updatedDeps.map((dep) => quote(dep.depName)),
+  ].join(' ');
 
-  /* istanbul ignore next */
   try {
-    const command = [...cmdParts, ...updatedDeps.map(quote)].join(' ');
-    await exec(command, { cwd });
+    await exec(command, execOptions);
   } catch (err) {
+    // istanbul ignore if
+    if (err.message === TEMPORARY_ERROR) {
+      throw err;
+    }
+
     logger.warn(
-      { err, message: err.message },
+      { err, message: err.message, command },
       'Failed to update Mix lock file'
     );
 

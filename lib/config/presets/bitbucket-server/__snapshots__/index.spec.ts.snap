@@ -11,10 +11,10 @@ Array [
   Object {
     "headers": Object {
       "accept": "application/json",
-      "accept-encoding": "gzip, deflate",
+      "accept-encoding": "gzip, deflate, br",
       "authorization": "Bearer abc",
       "host": "git.company.org",
-      "user-agent": "https://github.com/renovatebot/renovate",
+      "user-agent": "RenovateBot/0.0.0-semantic-release (https://github.com/renovatebot/renovate)",
       "x-atlassian-token": "no-check",
     },
     "method": "GET",
@@ -28,10 +28,10 @@ Array [
   Object {
     "headers": Object {
       "accept": "application/json",
-      "accept-encoding": "gzip, deflate",
+      "accept-encoding": "gzip, deflate, br",
       "authorization": "Bearer abc",
       "host": "git.company.org",
-      "user-agent": "https://github.com/renovatebot/renovate",
+      "user-agent": "RenovateBot/0.0.0-semantic-release (https://github.com/renovatebot/renovate)",
       "x-atlassian-token": "no-check",
     },
     "method": "GET",
@@ -45,10 +45,10 @@ Array [
   Object {
     "headers": Object {
       "accept": "application/json",
-      "accept-encoding": "gzip, deflate",
+      "accept-encoding": "gzip, deflate, br",
       "authorization": "Bearer abc",
       "host": "git.company.org",
-      "user-agent": "https://github.com/renovatebot/renovate",
+      "user-agent": "RenovateBot/0.0.0-semantic-release (https://github.com/renovatebot/renovate)",
       "x-atlassian-token": "no-check",
     },
     "method": "GET",
@@ -62,10 +62,10 @@ Array [
   Object {
     "headers": Object {
       "accept": "application/json",
-      "accept-encoding": "gzip, deflate",
+      "accept-encoding": "gzip, deflate, br",
       "authorization": "Bearer abc",
       "host": "git.company.org",
-      "user-agent": "https://github.com/renovatebot/renovate",
+      "user-agent": "RenovateBot/0.0.0-semantic-release (https://github.com/renovatebot/renovate)",
       "x-atlassian-token": "no-check",
     },
     "method": "GET",
@@ -79,14 +79,31 @@ Array [
   Object {
     "headers": Object {
       "accept": "application/json",
-      "accept-encoding": "gzip, deflate",
+      "accept-encoding": "gzip, deflate, br",
       "authorization": "Bearer abc",
       "host": "api.github.example.org",
-      "user-agent": "https://github.com/renovatebot/renovate",
+      "user-agent": "RenovateBot/0.0.0-semantic-release (https://github.com/renovatebot/renovate)",
       "x-atlassian-token": "no-check",
     },
     "method": "GET",
     "url": "https://api.github.example.org/rest/api/1.0/projects/some/repos/repo/browse/default.json?limit=20000",
+  },
+]
+`;
+
+exports[`config/presets/bitbucket-server/index getPresetFromEndpoint() uses custom path 1`] = `
+Array [
+  Object {
+    "headers": Object {
+      "accept": "application/json",
+      "accept-encoding": "gzip, deflate, br",
+      "authorization": "Bearer abc",
+      "host": "api.github.example.org",
+      "user-agent": "RenovateBot/0.0.0-semantic-release (https://github.com/renovatebot/renovate)",
+      "x-atlassian-token": "no-check",
+    },
+    "method": "GET",
+    "url": "https://api.github.example.org/rest/api/1.0/projects/some/repos/repo/browse/path/default.json?limit=20000",
   },
 ]
 `;

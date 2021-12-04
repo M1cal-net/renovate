@@ -34,6 +34,12 @@ function createSingleConfig(option) {
         temp.items.enum = option.allowedValues;
       }
     }
+    if (option.subType == 'string' && option.allowString === true) {
+      const items = temp.items;
+      delete temp.items;
+      delete temp.type;
+      temp.oneOf = [{ type: 'array', items }, { ...items }];
+    }
   } else {
     if (option.format) {
       temp.format = option.format;
@@ -80,9 +86,8 @@ function addChildrenArrayInParents() {
 function createSchemaForChildConfigs() {
   for (const option of options) {
     if (option.parent) {
-      properties[option.parent].items.allOf[0].properties[
-        option.name
-      ] = createSingleConfig(option);
+      properties[option.parent].items.allOf[0].properties[option.name] =
+        createSingleConfig(option);
     }
   }
 }

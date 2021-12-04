@@ -1,5 +1,6 @@
 import { envMock, exec, mockExecSequence } from '../../../test/exec-util';
 import { env, getName } from '../../../test/util';
+import { setAdminConfig } from '../../config/admin';
 import {
   getPythonAlias,
   parsePythonVersion,
@@ -10,13 +11,14 @@ import {
 jest.mock('child_process');
 jest.mock('../../util/exec/env');
 
-describe(getName(__filename), () => {
+describe(getName(), () => {
   beforeEach(() => {
     jest.resetAllMocks();
     jest.resetModules();
     resetModule();
 
     env.getChildProcessEnv.mockReturnValue(envMock.basic);
+    setAdminConfig({ localDir: '/tmp/foo/bar' });
   });
   describe('parsePythonVersion', () => {
     it('returns major and minor version numbers', () => {
@@ -29,6 +31,7 @@ describe(getName(__filename), () => {
         { stdout: '', stderr: 'Python 2.7.17\\n' },
         new Error(),
         { stdout: 'Python 3.8.0\\n', stderr: '' },
+        new Error(),
       ]);
       const result = await getPythonAlias();
       expect(pythonVersions).toContain(result);

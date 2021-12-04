@@ -1,24 +1,22 @@
 import simpleGit from 'simple-git';
 import * as packageCache from '../../util/cache/package';
+import { getRemoteUrlWithToken } from '../../util/git/url';
 import * as semver from '../../versioning/semver';
-import { DigestConfig, GetReleasesConfig, ReleaseResult } from '../common';
+import type { DigestConfig, GetReleasesConfig, ReleaseResult } from '../types';
+import type { RawRefs } from './types';
 
 export const id = 'git-refs';
+export const customRegistrySupport = false;
 
 const cacheMinutes = 10;
 
 // git will prompt for known hosts or passwords, unless we activate BatchMode
 process.env.GIT_SSH_COMMAND = 'ssh -o BatchMode=yes';
 
-export interface RawRefs {
-  type: string;
-  value: string;
-  hash: string;
-}
-
-export async function getRawRefs({
-  lookupName,
-}: GetReleasesConfig): Promise<RawRefs[] | null> {
+export async function getRawRefs(
+  { lookupName }: GetReleasesConfig,
+  hostType: string
+): Promise<RawRefs[] | null> {
   const git = simpleGit();
   const cacheNamespace = 'git-raw-refs';
 
@@ -32,7 +30,9 @@ export async function getRawRefs({
   }
 
   // fetch remote tags
-  const lsRemote = await git.listRemote([lookupName]);
+  const lsRemote = await git.listRemote([
+    getRemoteUrlWithToken(lookupName, hostType),
+  ]);
   if (!lsRemote) {
     return null;
   }
@@ -73,7 +73,7 @@ export async function getRawRefs({
 export async function getReleases({
   lookupName,
 }: GetReleasesConfig): Promise<ReleaseResult | null> {
-  const rawRefs: RawRefs[] = await getRawRefs({ lookupName });
+  const rawRefs: RawRefs[] = await getRawRefs({ lookupName }, id);
 
   const refs = rawRefs
     .filter((ref) => ref.type === 'tags' || ref.type === 'heads')
@@ -100,7 +100,7 @@ export async function getDigest(
   { lookupName }: Partial<DigestConfig>,
   newValue?: string
 ): Promise<string | null> {
-  const rawRefs: RawRefs[] = await getRawRefs({ lookupName });
+  const rawRefs: RawRefs[] = await getRawRefs({ lookupName }, id);
   const findValue = newValue || 'HEAD';
   const ref = rawRefs.find((rawRef) => rawRef.value === findValue);
   if (ref) {

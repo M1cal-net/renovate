@@ -1,21 +1,18 @@
 import { exec as _exec } from 'child_process';
-import { readFileSync } from 'fs';
 import _fs from 'fs-extra';
 import { join } from 'upath';
 import { envMock, mockExecAll } from '../../../test/exec-util';
-import { mocked } from '../../../test/util';
+import { loadFixture, mocked } from '../../../test/util';
+import { setAdminConfig } from '../../config/admin';
+import type { RepoAdminConfig } from '../../config/types';
 import * as _datasource from '../../datasource';
-import { setExecConfig } from '../../util/exec';
-import { BinarySource } from '../../util/exec/common';
 import * as docker from '../../util/exec/docker';
 import * as _env from '../../util/exec/env';
 import * as _hostRules from '../../util/host-rules';
+import type { UpdateArtifactsConfig } from '../types';
 import { updateArtifacts } from './artifacts';
 
-const pyproject10toml = readFileSync(
-  'lib/manager/poetry/__fixtures__/pyproject.10.toml',
-  'utf8'
-);
+const pyproject10toml = loadFixture('pyproject.10.toml');
 
 jest.mock('fs-extra');
 jest.mock('child_process');
@@ -29,19 +26,21 @@ const env = mocked(_env);
 const datasource = mocked(_datasource);
 const hostRules = mocked(_hostRules);
 
-const config = {
+const adminConfig: RepoAdminConfig = {
   localDir: join('/tmp/github/some/repo'),
 };
 
+const config: UpdateArtifactsConfig = {};
+
 describe('.updateArtifacts()', () => {
-  beforeEach(async () => {
+  beforeEach(() => {
     jest.resetAllMocks();
     env.getChildProcessEnv.mockReturnValue(envMock.basic);
-    await setExecConfig(config);
+    setAdminConfig(adminConfig);
     docker.resetPrefetchedImages();
   });
   it('returns null if no poetry.lock found', async () => {
-    const updatedDeps = ['dep1'];
+    const updatedDeps = [{ depName: 'dep1' }];
     expect(
       await updateArtifacts({
         packageFileName: 'pyproject.toml',
@@ -65,7 +64,7 @@ describe('.updateArtifacts()', () => {
     fs.readFile.mockReturnValueOnce('Current poetry.lock' as any);
     const execSnapshots = mockExecAll(exec);
     fs.readFile.mockReturnValueOnce('Current poetry.lock' as any);
-    const updatedDeps = ['dep1'];
+    const updatedDeps = [{ depName: 'dep1' }];
     expect(
       await updateArtifacts({
         packageFileName: 'pyproject.toml',
@@ -80,7 +79,7 @@ describe('.updateArtifacts()', () => {
     fs.readFile.mockResolvedValueOnce('[metadata]\n' as never);
     const execSnapshots = mockExecAll(exec);
     fs.readFile.mockReturnValueOnce('New poetry.lock' as any);
-    const updatedDeps = ['dep1'];
+    const updatedDeps = [{ depName: 'dep1' }];
     expect(
       await updateArtifacts({
         packageFileName: 'pyproject.toml',
@@ -102,7 +101,7 @@ describe('.updateArtifacts()', () => {
     });
     hostRules.find.mockReturnValueOnce({ username: 'usernameTwo' });
     hostRules.find.mockReturnValueOnce({ password: 'passwordFour' });
-    const updatedDeps = ['dep1'];
+    const updatedDeps = [{ depName: 'dep1' }];
     expect(
       await updateArtifacts({
         packageFileName: 'pyproject.toml',
@@ -119,7 +118,7 @@ describe('.updateArtifacts()', () => {
     fs.readFile.mockResolvedValueOnce('[metadata]\n' as never);
     const execSnapshots = mockExecAll(exec);
     fs.readFile.mockReturnValueOnce('New poetry.lock' as any);
-    const updatedDeps = ['dep1'];
+    const updatedDeps = [{ depName: 'dep1' }];
     expect(
       await updateArtifacts({
         packageFileName: 'pyproject.toml',
@@ -131,19 +130,14 @@ describe('.updateArtifacts()', () => {
     expect(execSnapshots).toMatchSnapshot();
   });
   it('returns updated poetry.lock using docker', async () => {
-    jest.spyOn(docker, 'removeDanglingContainers').mockResolvedValueOnce();
-    await setExecConfig({
-      ...config,
-      binarySource: BinarySource.Docker,
-      dockerUser: 'foobar',
-    });
+    setAdminConfig({ ...adminConfig, binarySource: 'docker' });
     fs.readFile.mockResolvedValueOnce('[metadata]\n' as any);
     const execSnapshots = mockExecAll(exec);
     fs.readFile.mockReturnValueOnce('New poetry.lock' as any);
     datasource.getPkgReleases.mockResolvedValueOnce({
       releases: [{ version: '2.7.5' }, { version: '3.4.2' }],
     });
-    const updatedDeps = ['dep1'];
+    const updatedDeps = [{ depName: 'dep1' }];
     expect(
       await updateArtifacts({
         packageFileName: 'pyproject.toml',
@@ -151,19 +145,17 @@ describe('.updateArtifacts()', () => {
         newPackageFileContent: '{}',
         config: {
           ...config,
-          constraints: { python: '~2.7 || ^3.4' },
+          constraints: {
+            python: '~2.7 || ^3.4',
+            poetry: 'poetry>=1.1.2 setuptools poetry-dynamic-versioning>1',
+          },
         },
       })
     ).not.toBeNull();
     expect(execSnapshots).toMatchSnapshot();
   });
   it('returns updated poetry.lock using docker (constraints)', async () => {
-    jest.spyOn(docker, 'removeDanglingContainers').mockResolvedValueOnce();
-    await setExecConfig({
-      ...config,
-      binarySource: BinarySource.Docker,
-      dockerUser: 'foobar',
-    });
+    setAdminConfig({ ...adminConfig, binarySource: 'docker' });
     fs.readFile.mockResolvedValueOnce(
       '[metadata]\npython-versions = "~2.7 || ^3.4"' as any
     );
@@ -172,7 +164,7 @@ describe('.updateArtifacts()', () => {
     datasource.getPkgReleases.mockResolvedValueOnce({
       releases: [{ version: '2.7.5' }, { version: '3.3.2' }],
     });
-    const updatedDeps = ['dep1'];
+    const updatedDeps = [{ depName: 'dep1' }];
     expect(
       await updateArtifacts({
         packageFileName: 'pyproject.toml',
@@ -191,7 +183,7 @@ describe('.updateArtifacts()', () => {
     fs.outputFile.mockImplementationOnce(() => {
       throw new Error('not found');
     });
-    const updatedDeps = ['dep1'];
+    const updatedDeps = [{ depName: 'dep1' }];
     expect(
       await updateArtifacts({
         packageFileName: 'pyproject.toml',
@@ -212,7 +204,7 @@ describe('.updateArtifacts()', () => {
         newPackageFileContent: '{}',
         config: {
           ...config,
-          isLockFileMaintenance: true,
+          updateType: 'lockFileMaintenance',
         },
       })
     ).not.toBeNull();

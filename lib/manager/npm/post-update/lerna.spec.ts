@@ -1,6 +1,7 @@
 import { exec as _exec } from 'child_process';
 import { envMock, mockExecAll } from '../../../../test/exec-util';
 import { getName, mocked } from '../../../../test/util';
+import { setAdminConfig } from '../../../config/admin';
 import * as _env from '../../../util/exec/env';
 import * as _lernaHelper from './lerna';
 
@@ -24,7 +25,7 @@ function lernaPkgFileWithoutLernaDep(lernaClient: string) {
     lernaClient,
   };
 }
-describe(getName(__filename), () => {
+describe(getName(), () => {
   describe('generateLockFiles()', () => {
     beforeEach(() => {
       jest.resetAllMocks();
@@ -92,30 +93,15 @@ describe(getName(__filename), () => {
       expect(res.error).toBe(false);
       expect(execSnapshots).toMatchSnapshot();
     });
-    it('maps dot files', async () => {
-      const execSnapshots = mockExecAll(exec);
-      const res = await lernaHelper.generateLockFiles(
-        lernaPkgFile('npm'),
-        'some-dir',
-        {
-          dockerMapDotfiles: true,
-          constraints: { npm: '^6.0.0' },
-        },
-        {}
-      );
-      expect(res.error).toBe(false);
-      expect(execSnapshots).toMatchSnapshot();
-    });
     it('allows scripts for trust level high', async () => {
       const execSnapshots = mockExecAll(exec);
-      global.trustLevel = 'high';
+      setAdminConfig({ allowScripts: true });
       const res = await lernaHelper.generateLockFiles(
         lernaPkgFile('npm'),
         'some-dir',
-        {},
+        { constraints: { npm: '^6.0.0' } },
         {}
       );
-      delete global.trustLevel;
       expect(res.error).toBe(false);
       expect(execSnapshots).toMatchSnapshot();
     });

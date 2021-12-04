@@ -1,7 +1,8 @@
 import { coerce } from 'semver';
+import { parseRange } from 'semver-utils';
 import { logger } from '../../logger';
-import { NewValueConfig, VersioningApi } from '../common';
 import { api as npm } from '../npm';
+import type { NewValueConfig, VersioningApi } from '../types';
 
 export const id = 'composer';
 export const displayName = 'Composer';
@@ -118,17 +119,28 @@ const minSatisfyingVersion = (versions: string[], range: string): string =>
 function getNewValue({
   currentValue,
   rangeStrategy,
-  fromVersion,
-  toVersion,
+  currentVersion,
+  newVersion,
 }: NewValueConfig): string {
   if (rangeStrategy === 'pin') {
-    return toVersion;
+    return newVersion;
   }
-  const toMajor = getMajor(toVersion);
-  const toMinor = getMinor(toVersion);
+  if (rangeStrategy === 'update-lockfile') {
+    if (matches(newVersion, currentValue)) {
+      return currentValue;
+    }
+    return getNewValue({
+      currentValue,
+      rangeStrategy: 'replace',
+      currentVersion,
+      newVersion,
+    });
+  }
+  const toMajor = getMajor(newVersion);
+  const toMinor = getMinor(newVersion);
   let newValue: string;
   if (isVersion(currentValue)) {
-    newValue = toVersion;
+    newValue = newVersion;
   } else if (/^[~^](0\.[1-9][0-9]*)$/.test(currentValue)) {
     const operator = currentValue.substr(0, 1);
     // handle ~0.4 case first
@@ -144,43 +156,60 @@ function getNewValue({
   } else if (/^[~^]([0-9]*(?:\.[0-9]*)?)$/.test(currentValue)) {
     const operator = currentValue.substr(0, 1);
     // handle ~4.1 case
-    if (fromVersion && toMajor > getMajor(fromVersion)) {
+    if (currentVersion && toMajor > getMajor(currentVersion)) {
       newValue = `${operator}${toMajor}.0`;
     } else {
       newValue = `${operator}${toMajor}.${toMinor}`;
     }
   } else if (
-    npm.isVersion(padZeroes(normalizeVersion(toVersion))) &&
+    npm.isVersion(padZeroes(normalizeVersion(newVersion))) &&
     npm.isValid(normalizeVersion(currentValue)) &&
     composer2npm(currentValue) === normalizeVersion(currentValue)
   ) {
     newValue = npm.getNewValue({
       currentValue: normalizeVersion(currentValue),
       rangeStrategy,
-      fromVersion: normalizeVersion(fromVersion),
-      toVersion: padZeroes(normalizeVersion(toVersion)),
+      currentVersion: normalizeVersion(currentVersion),
+      newVersion: padZeroes(normalizeVersion(newVersion)),
     });
   }
-  if (currentValue.includes(' || ')) {
-    const lastValue = currentValue.split('||').pop().trim();
-    const replacementValue = getNewValue({
-      currentValue: lastValue,
-      rangeStrategy,
-      fromVersion,
-      toVersion,
-    });
-    if (rangeStrategy === 'replace') {
-      newValue = replacementValue;
-    } else if (rangeStrategy === 'widen') {
-      newValue = currentValue + ' || ' + replacementValue;
+
+  if (rangeStrategy === 'widen' && matches(newVersion, currentValue)) {
+    newValue = currentValue;
+  } else {
+    const hasOr = currentValue.includes(' || ');
+    if (hasOr || rangeStrategy === 'widen') {
+      const lastValue = hasOr
+        ? currentValue.split('||').pop().trim()
+        : currentValue;
+      const replacementValue = getNewValue({
+        currentValue: lastValue,
+        rangeStrategy: 'replace',
+        currentVersion,
+        newVersion,
+      });
+      if (rangeStrategy === 'replace') {
+        newValue = replacementValue;
+      } else {
+        const parsedRange = parseRange(replacementValue);
+        const element = parsedRange[parsedRange.length - 1];
+        if (element.operator?.startsWith('<')) {
+          const splitCurrent = currentValue.split(element.operator);
+          splitCurrent.pop();
+          newValue = splitCurrent.join(element.operator) + replacementValue;
+        } else {
+          newValue = currentValue + ' || ' + replacementValue;
+        }
+      }
     }
   }
+
   if (!newValue) {
     logger.warn(
-      { currentValue, rangeStrategy, fromVersion, toVersion },
+      { currentValue, rangeStrategy, currentVersion, newVersion },
       'Unsupported composer value'
     );
-    newValue = toVersion;
+    newValue = newVersion;
   }
   if (currentValue.split('.')[0].includes('v')) {
     newValue = newValue.replace(/([0-9])/, 'v$1');

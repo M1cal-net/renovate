@@ -1,15 +1,16 @@
 import is from '@sindresorhus/is';
-import yaml from 'js-yaml';
-import * as datasourceHelm from '../../datasource/helm';
+import { load } from 'js-yaml';
+import { HelmDatasource } from '../../datasource/helm';
 import { logger } from '../../logger';
 import { SkipReason } from '../../types';
-import { ExtractConfig, PackageDependency, PackageFile } from '../common';
+import { getSiblingFileName, localPathExists } from '../../util/fs';
+import type { ExtractConfig, PackageDependency, PackageFile } from '../types';
 
-export function extractPackageFile(
+export async function extractPackageFile(
   content: string,
   fileName: string,
   config: ExtractConfig
-): PackageFile | null {
+): Promise<PackageFile | null> {
   let chart: {
     apiVersion: string;
     name: string;
@@ -17,8 +18,8 @@ export function extractPackageFile(
     dependencies: Array<{ name: string; version: string; repository: string }>;
   };
   try {
-    // TODO: fix me
-    chart = yaml.safeLoad(content, { json: true }) as any;
+    // TODO: fix me (#9610)
+    chart = load(content, { json: true }) as any;
     if (!(chart?.apiVersion && chart.name && chart.version)) {
       logger.debug(
         { fileName },
@@ -57,9 +58,14 @@ export function extractPackageFile(
     };
     if (dep.repository) {
       res.registryUrls = [dep.repository];
-      if (dep.repository.startsWith('@')) {
-        const repoWithAtRemoved = dep.repository.slice(1);
-        const alias = config.aliases[repoWithAtRemoved];
+      if (
+        dep.repository.startsWith('@') ||
+        dep.repository.startsWith('alias:')
+      ) {
+        const repoWithPrefixRemoved = dep.repository.slice(
+          dep.repository[0] === '@' ? 1 : 6
+        );
+        const alias = config.aliases[repoWithPrefixRemoved];
         if (alias) {
           res.registryUrls = [alias];
           return res;
@@ -82,10 +88,15 @@ export function extractPackageFile(
     }
     return res;
   });
-  const res = {
+  const res: PackageFile = {
     deps,
-    datasource: datasourceHelm.id,
+    datasource: HelmDatasource.id,
     packageFileVersion,
   };
+  const lockFileName = getSiblingFileName(fileName, 'Chart.lock');
+  // istanbul ignore if
+  if (await localPathExists(lockFileName)) {
+    res.lockFiles = [lockFileName];
+  }
   return res;
 }

@@ -1,5 +1,4 @@
-import { readFileSync } from 'fs';
-import upath from 'upath';
+import { getName, loadFixture } from '../../../../test/util';
 import { getConfig } from '../../../config/defaults';
 import * as _fs from '../../../util/fs';
 import * as npmExtract from '.';
@@ -9,20 +8,17 @@ const fs: any = _fs;
 // TODO: fix types
 const defaultConfig = getConfig();
 
-function readFixture(fixture: string) {
-  return readFileSync(
-    upath.resolve(__dirname, `../__fixtures__/${fixture}`),
-    'utf8'
-  );
-}
+const input01Content = loadFixture('inputs/01.json', '..');
+const input01GlobContent = loadFixture('inputs/01-glob.json', '..');
+const workspacesContent = loadFixture('inputs/workspaces.json', '..');
+const workspacesSimpleContent = loadFixture(
+  'inputs/workspaces-simple.json',
+  '..'
+);
+const vendorisedContent = loadFixture('is-object.json', '..');
+const invalidNameContent = loadFixture('invalid-name.json', '..');
 
-const input01Content = readFixture('inputs/01.json');
-const workspacesContent = readFixture('inputs/workspaces.json');
-const workspacesSimpleContent = readFixture('inputs/workspaces-simple.json');
-const vendorisedContent = readFixture('is-object.json');
-const invalidNameContent = readFixture('invalid-name.json');
-
-describe('manager/npm/extract', () => {
+describe(getName(), () => {
   describe('.extractPackageFile()', () => {
     beforeEach(() => {
       fs.readLocalFile = jest.fn(() => null);
@@ -84,6 +80,15 @@ describe('manager/npm/extract', () => {
       );
       expect(res).toMatchSnapshot();
     });
+    it('returns an array of dependencies with resolution comments', async () => {
+      const res = await npmExtract.extractPackageFile(
+        input01GlobContent,
+        'package.json',
+        defaultConfig
+      );
+      expect(res?.deps).toHaveLength(13);
+      expect(res).toMatchSnapshot();
+    });
     it('finds a lock file', async () => {
       fs.readLocalFile = jest.fn((fileName) => {
         if (fileName === 'yarn.lock') {
@@ -108,24 +113,38 @@ describe('manager/npm/extract', () => {
       const res = await npmExtract.extractPackageFile(
         input01Content,
         'package.json',
-        { global: {} }
+        {}
       );
       expect(res.npmrc).toBeDefined();
     });
-    it('finds and discards .npmrc', async () => {
+    it('ignores .npmrc when config.npmrc is defined', async () => {
       fs.readLocalFile = jest.fn((fileName) => {
         if (fileName === '.npmrc') {
-          // eslint-disable-next-line
-          return '//registry.npmjs.org/:_authToken=${NPM_AUTH_TOKEN}\n';
+          return 'some-npmrc\n';
         }
         return null;
       });
       const res = await npmExtract.extractPackageFile(
         input01Content,
         'package.json',
-        { global: {} }
+        { npmrc: 'some-configured-npmrc' }
       );
       expect(res.npmrc).toBeUndefined();
+    });
+    it('finds and filters .npmrc with variables', async () => {
+      fs.readLocalFile = jest.fn((fileName) => {
+        if (fileName === '.npmrc') {
+          // eslint-disable-next-line
+          return 'registry=https://registry.npmjs.org\n//registry.npmjs.org/:_authToken=${NPM_AUTH_TOKEN}\n';
+        }
+        return null;
+      });
+      const res = await npmExtract.extractPackageFile(
+        input01Content,
+        'package.json',
+        {}
+      );
+      expect(res.npmrc).toEqual('registry=https://registry.npmjs.org\n');
     });
     it('finds lerna', async () => {
       fs.readLocalFile = jest.fn((fileName) => {
@@ -309,6 +328,12 @@ describe('manager/npm/extract', () => {
       expect(res).toMatchSnapshot();
     });
     it('extracts npm package alias', async () => {
+      fs.readLocalFile = jest.fn((fileName) => {
+        if (fileName === 'package-lock.json') {
+          return '{}';
+        }
+        return null;
+      });
       const pJson = {
         dependencies: {
           a: 'npm:foo@1',
@@ -327,7 +352,7 @@ describe('manager/npm/extract', () => {
   });
   describe('.postExtract()', () => {
     it('runs', async () => {
-      await expect(npmExtract.postExtract([])).resolves.not.toThrow();
+      await expect(npmExtract.postExtract([], false)).resolves.not.toThrow();
     });
   });
 });

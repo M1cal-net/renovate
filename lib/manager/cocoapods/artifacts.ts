@@ -1,15 +1,16 @@
 import { quote } from 'shlex';
 import { dirname, join } from 'upath';
+import { TEMPORARY_ERROR } from '../../constants/error-messages';
 import { logger } from '../../logger';
 import { ExecOptions, exec } from '../../util/exec';
 import {
+  ensureCacheDir,
   getSiblingFileName,
   readLocalFile,
   writeLocalFile,
 } from '../../util/fs';
 import { getRepoStatus } from '../../util/git';
-import { UpdateArtifact, UpdateArtifactsResult } from '../common';
-import { getCocoaPodsHome } from './utils';
+import type { UpdateArtifact, UpdateArtifactsResult } from '../types';
 
 const pluginRegex = /^\s*plugin\s*(['"])(?<plugin>[^'"]+)\1/;
 
@@ -70,10 +71,10 @@ export async function updateArtifacts({
   const execOptions: ExecOptions = {
     cwdFile: packageFileName,
     extraEnv: {
-      CP_HOME_DIR: await getCocoaPodsHome(config),
+      CP_HOME_DIR: await ensureCacheDir('cocoapods'),
     },
     docker: {
-      image: 'renovate/cocoapods',
+      image: 'cocoapods',
       tagScheme: 'ruby',
       tagConstraint,
     },
@@ -82,6 +83,10 @@ export async function updateArtifacts({
   try {
     await exec(cmd, execOptions);
   } catch (err) {
+    // istanbul ignore if
+    if (err.message === TEMPORARY_ERROR) {
+      throw err;
+    }
     return [
       {
         artifactError: {

@@ -1,4 +1,5 @@
 import { quote } from 'shlex';
+import { TEMPORARY_ERROR } from '../../constants/error-messages';
 import { logger } from '../../logger';
 import { ExecOptions, exec } from '../../util/exec';
 import {
@@ -8,11 +9,11 @@ import {
   writeLocalFile,
 } from '../../util/fs';
 import { getRepoStatus } from '../../util/git';
-import {
+import type {
   UpdateArtifact,
   UpdateArtifactsConfig,
   UpdateArtifactsResult,
-} from '../common';
+} from '../types';
 
 function getPythonConstraint(
   existingLockFileContent: string,
@@ -76,9 +77,6 @@ export async function updateArtifacts({
 }: UpdateArtifact): Promise<UpdateArtifactsResult[] | null> {
   logger.debug(`pipenv.updateArtifacts(${pipfileName})`);
 
-  const cacheDir = await ensureCacheDir('./others/pipenv', 'PIPENV_CACHE_DIR');
-  logger.debug('Using pipenv cache ' + cacheDir);
-
   const lockFileName = pipfileName + '.lock';
   const existingLockFileContent = await readLocalFile(lockFileName, 'utf8');
   if (!existingLockFileContent) {
@@ -97,17 +95,17 @@ export async function updateArtifacts({
       config
     );
     const execOptions: ExecOptions = {
+      cwdFile: pipfileName,
       extraEnv: {
-        PIPENV_CACHE_DIR: cacheDir,
+        PIPENV_CACHE_DIR: await ensureCacheDir('pipenv'),
       },
       docker: {
-        image: 'renovate/python',
+        image: 'python',
         tagConstraint,
         tagScheme: 'pep440',
         preCommands: [
           `pip install --user ${quote(`pipenv${pipenvConstraint}`)}`,
         ],
-        volumes: [cacheDir],
       },
     };
     logger.debug({ cmd }, 'pipenv lock command');
@@ -126,6 +124,10 @@ export async function updateArtifacts({
       },
     ];
   } catch (err) {
+    // istanbul ignore if
+    if (err.message === TEMPORARY_ERROR) {
+      throw err;
+    }
     logger.debug({ err }, 'Failed to update Pipfile.lock');
     return [
       {

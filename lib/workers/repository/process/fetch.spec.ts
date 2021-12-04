@@ -1,8 +1,13 @@
-import { RenovateConfig, getConfig, mocked } from '../../../../test/util';
+import {
+  RenovateConfig,
+  getConfig,
+  getName,
+  mocked,
+} from '../../../../test/util';
 import * as datasourceMaven from '../../../datasource/maven';
 import * as datasourceNpm from '../../../datasource/npm';
-import { ManagerApi, PackageFile } from '../../../manager/common';
 import * as _npm from '../../../manager/npm';
+import type { ManagerApi, PackageFile } from '../../../manager/types';
 import { fetchUpdates } from './fetch';
 import * as lookup from './lookup';
 
@@ -11,7 +16,7 @@ const lookupUpdates = mocked(lookup).lookupUpdates;
 
 jest.mock('./lookup');
 
-describe('workers/repository/process/fetch', () => {
+describe(getName(), () => {
   describe('fetchUpdates()', () => {
     let config: RenovateConfig;
     beforeEach(() => {
@@ -29,7 +34,7 @@ describe('workers/repository/process/fetch', () => {
       config.ignoreDeps = ['abcd'];
       config.packageRules = [
         {
-          packageNames: ['foo'],
+          matchPackageNames: ['foo'],
           enabled: false,
         },
       ];

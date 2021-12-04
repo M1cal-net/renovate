@@ -1,12 +1,9 @@
 import { logger } from '../logger';
-import versionings from './api.generated';
-import {
-  VersioningApi,
-  VersioningApiConstructor,
-  isVersioningApiConstructor,
-} from './common';
+import versionings from './api';
+import { isVersioningApiConstructor } from './common';
+import type { VersioningApi, VersioningApiConstructor } from './types';
 
-export * from './common';
+export * from './types';
 
 export const getVersioningList = (): string[] => Array.from(versionings.keys());
 /**
@@ -19,7 +16,7 @@ export const getVersionings = (): Map<
 
 export function get(versioning: string): VersioningApi {
   if (!versioning) {
-    logger.debug('Missing versioning');
+    logger.trace('Missing versioning, using semver as fallback.');
     return versionings.get('semver') as VersioningApi;
   }
   let versioningName: string;

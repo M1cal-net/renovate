@@ -1,10 +1,9 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
-exports[`lib/manager/dockerfile/extract extractPackageFile() detects ["stage"] and ["final"] deps of docker multi-stage build. 1`] = `
+exports[`manager/dockerfile/extract extractPackageFile() detects ["stage"] and ["final"] deps of docker multi-stage build. 1`] = `
 Array [
   Object {
     "autoReplaceStringTemplate": "{{depName}}{{#if newValue}}:{{newValue}}{{/if}}{{#if newDigest}}@{{newDigest}}{{/if}}",
-    "commitMessageTopic": "Node.js",
     "currentDigest": undefined,
     "currentValue": "8.15.1-alpine",
     "datasource": "docker",
@@ -33,11 +32,96 @@ Array [
 ]
 `;
 
-exports[`lib/manager/dockerfile/extract extractPackageFile() extracts images on adjacent lines 1`] = `
+exports[`manager/dockerfile/extract extractPackageFile() extracts images from all sorts of (maybe multiline) FROM and COPY --from statements 1`] = `
 Array [
   Object {
     "autoReplaceStringTemplate": "{{depName}}{{#if newValue}}:{{newValue}}{{/if}}{{#if newDigest}}@{{newDigest}}{{/if}}",
-    "commitMessageTopic": "Node.js",
+    "currentDigest": undefined,
+    "currentValue": undefined,
+    "datasource": "docker",
+    "depName": "image1",
+    "depType": "stage",
+    "replaceString": "image1",
+  },
+  Object {
+    "autoReplaceStringTemplate": "{{depName}}{{#if newValue}}:{{newValue}}{{/if}}{{#if newDigest}}@{{newDigest}}{{/if}}",
+    "currentDigest": "sha256:abcdef",
+    "currentValue": "1.0.0",
+    "datasource": "docker",
+    "depName": "image2",
+    "depType": "stage",
+    "replaceString": "image2:1.0.0@sha256:abcdef",
+  },
+  Object {
+    "autoReplaceStringTemplate": "{{depName}}{{#if newValue}}:{{newValue}}{{/if}}{{#if newDigest}}@{{newDigest}}{{/if}}",
+    "currentDigest": undefined,
+    "currentValue": undefined,
+    "datasource": "docker",
+    "depName": "image4",
+    "depType": "stage",
+    "replaceString": "image4",
+  },
+  Object {
+    "autoReplaceStringTemplate": "{{depName}}{{#if newValue}}:{{newValue}}{{/if}}{{#if newDigest}}@{{newDigest}}{{/if}}",
+    "currentDigest": undefined,
+    "currentValue": undefined,
+    "datasource": "docker",
+    "depName": "image5",
+    "depType": "stage",
+    "replaceString": "image5",
+  },
+  Object {
+    "autoReplaceStringTemplate": "{{depName}}{{#if newValue}}:{{newValue}}{{/if}}{{#if newDigest}}@{{newDigest}}{{/if}}",
+    "currentDigest": undefined,
+    "currentValue": undefined,
+    "datasource": "docker",
+    "depName": "image6",
+    "depType": "stage",
+    "replaceString": "image6",
+  },
+  Object {
+    "autoReplaceStringTemplate": "{{depName}}{{#if newValue}}:{{newValue}}{{/if}}{{#if newDigest}}@{{newDigest}}{{/if}}",
+    "currentDigest": "sha256:abcdef",
+    "currentValue": "1.0.0",
+    "datasource": "docker",
+    "depName": "image7",
+    "depType": "stage",
+    "replaceString": "image7:1.0.0@sha256:abcdef",
+  },
+  Object {
+    "autoReplaceStringTemplate": "{{depName}}{{#if newValue}}:{{newValue}}{{/if}}{{#if newDigest}}@{{newDigest}}{{/if}}",
+    "currentDigest": undefined,
+    "currentValue": undefined,
+    "datasource": "docker",
+    "depName": "image11",
+    "depType": "stage",
+    "replaceString": "image11",
+  },
+  Object {
+    "autoReplaceStringTemplate": "{{depName}}{{#if newValue}}:{{newValue}}{{/if}}{{#if newDigest}}@{{newDigest}}{{/if}}",
+    "currentDigest": undefined,
+    "currentValue": undefined,
+    "datasource": "docker",
+    "depName": "image12",
+    "depType": "stage",
+    "replaceString": "image12",
+  },
+  Object {
+    "autoReplaceStringTemplate": "{{depName}}{{#if newValue}}:{{newValue}}{{/if}}{{#if newDigest}}@{{newDigest}}{{/if}}",
+    "currentDigest": undefined,
+    "currentValue": undefined,
+    "datasource": "docker",
+    "depName": "image13",
+    "depType": "final",
+    "replaceString": "image13",
+  },
+]
+`;
+
+exports[`manager/dockerfile/extract extractPackageFile() extracts images on adjacent lines 1`] = `
+Array [
+  Object {
+    "autoReplaceStringTemplate": "{{depName}}{{#if newValue}}:{{newValue}}{{/if}}{{#if newDigest}}@{{newDigest}}{{/if}}",
     "currentDigest": "sha256:d743b4141b02fcfb8beb68f92b4cd164f60ee457bf2d053f36785bf86de16b0d",
     "currentValue": "8.11.3-alpine",
     "datasource": "docker",
@@ -57,11 +141,10 @@ Array [
 ]
 `;
 
-exports[`lib/manager/dockerfile/extract extractPackageFile() extracts multiple FROM tags 1`] = `
+exports[`manager/dockerfile/extract extractPackageFile() extracts multiple FROM tags 1`] = `
 Array [
   Object {
     "autoReplaceStringTemplate": "{{depName}}{{#if newValue}}:{{newValue}}{{/if}}{{#if newDigest}}@{{newDigest}}{{/if}}",
-    "commitMessageTopic": "Node.js",
     "currentDigest": undefined,
     "currentValue": "6.12.3",
     "datasource": "docker",
@@ -81,36 +164,41 @@ Array [
 ]
 `;
 
-exports[`lib/manager/dockerfile/extract extractPackageFile() handles COPY --from 1`] = `
+exports[`manager/dockerfile/extract extractPackageFile() handles COPY --from 1`] = `
 Array [
   Object {
     "autoReplaceStringTemplate": "{{depName}}{{#if newValue}}:{{newValue}}{{/if}}{{#if newDigest}}@{{newDigest}}{{/if}}",
     "currentDigest": undefined,
     "currentValue": "v0.11.0",
     "datasource": "docker",
-    "depName": "gcr.io/k8s-skaffold/skaffold",
+    "depName": "k8s-skaffold/skaffold",
     "depType": "final",
-    "replaceString": "gcr.io/k8s-skaffold/skaffold:v0.11.0",
+    "registryUrls": Array [
+      "https://gcr.io",
+    ],
+    "replaceString": "k8s-skaffold/skaffold:v0.11.0",
   },
 ]
 `;
 
-exports[`lib/manager/dockerfile/extract extractPackageFile() handles abnormal spacing 1`] = `
+exports[`manager/dockerfile/extract extractPackageFile() handles abnormal spacing 1`] = `
 Array [
   Object {
     "autoReplaceStringTemplate": "{{depName}}{{#if newValue}}:{{newValue}}{{/if}}{{#if newDigest}}@{{newDigest}}{{/if}}",
-    "commitMessageTopic": "Node.js",
     "currentDigest": undefined,
     "currentValue": "8.7.0",
     "datasource": "docker",
-    "depName": "registry.allmine.info:5005/node",
+    "depName": "node",
     "depType": "final",
-    "replaceString": "registry.allmine.info:5005/node:8.7.0",
+    "registryUrls": Array [
+      "https://registry.allmine.info:5005",
+    ],
+    "replaceString": "node:8.7.0",
   },
 ]
 `;
 
-exports[`lib/manager/dockerfile/extract extractPackageFile() handles calico/node 1`] = `
+exports[`manager/dockerfile/extract extractPackageFile() handles calico/node 1`] = `
 Array [
   Object {
     "autoReplaceStringTemplate": "{{depName}}{{#if newValue}}:{{newValue}}{{/if}}{{#if newDigest}}@{{newDigest}}{{/if}}",
@@ -124,11 +212,10 @@ Array [
 ]
 `;
 
-exports[`lib/manager/dockerfile/extract extractPackageFile() handles comments 1`] = `
+exports[`manager/dockerfile/extract extractPackageFile() handles comments 1`] = `
 Array [
   Object {
     "autoReplaceStringTemplate": "{{depName}}{{#if newValue}}:{{newValue}}{{/if}}{{#if newDigest}}@{{newDigest}}{{/if}}",
-    "commitMessageTopic": "Node.js",
     "currentDigest": undefined,
     "currentValue": undefined,
     "datasource": "docker",
@@ -139,86 +226,95 @@ Array [
 ]
 `;
 
-exports[`lib/manager/dockerfile/extract extractPackageFile() handles custom hosts 1`] = `
+exports[`manager/dockerfile/extract extractPackageFile() handles custom hosts 1`] = `
 Array [
   Object {
     "autoReplaceStringTemplate": "{{depName}}{{#if newValue}}:{{newValue}}{{/if}}{{#if newDigest}}@{{newDigest}}{{/if}}",
-    "commitMessageTopic": "Node.js",
     "currentDigest": undefined,
     "currentValue": "8",
     "datasource": "docker",
-    "depName": "registry2.something.info/node",
+    "depName": "node",
     "depType": "final",
-    "replaceString": "registry2.something.info/node:8",
+    "registryUrls": Array [
+      "https://registry2.something.info",
+    ],
+    "replaceString": "node:8",
   },
 ]
 `;
 
-exports[`lib/manager/dockerfile/extract extractPackageFile() handles custom hosts and suffix 1`] = `
+exports[`manager/dockerfile/extract extractPackageFile() handles custom hosts and suffix 1`] = `
 Array [
   Object {
     "autoReplaceStringTemplate": "{{depName}}{{#if newValue}}:{{newValue}}{{/if}}{{#if newDigest}}@{{newDigest}}{{/if}}",
-    "commitMessageTopic": "Node.js",
     "currentDigest": undefined,
     "currentValue": "8-alpine",
     "datasource": "docker",
-    "depName": "registry2.something.info/node",
+    "depName": "node",
     "depType": "final",
-    "replaceString": "registry2.something.info/node:8-alpine",
+    "registryUrls": Array [
+      "https://registry2.something.info",
+    ],
+    "replaceString": "node:8-alpine",
   },
 ]
 `;
 
-exports[`lib/manager/dockerfile/extract extractPackageFile() handles custom hosts with namespace 1`] = `
+exports[`manager/dockerfile/extract extractPackageFile() handles custom hosts with namespace 1`] = `
 Array [
   Object {
     "autoReplaceStringTemplate": "{{depName}}{{#if newValue}}:{{newValue}}{{/if}}{{#if newDigest}}@{{newDigest}}{{/if}}",
-    "commitMessageTopic": "Node.js",
     "currentDigest": undefined,
     "currentValue": "8",
     "datasource": "docker",
-    "depName": "registry2.something.info/someaccount/node",
+    "depName": "someaccount/node",
     "depType": "final",
-    "replaceString": "registry2.something.info/someaccount/node:8",
+    "registryUrls": Array [
+      "https://registry2.something.info",
+    ],
+    "replaceString": "someaccount/node:8",
   },
 ]
 `;
 
-exports[`lib/manager/dockerfile/extract extractPackageFile() handles custom hosts with port 1`] = `
+exports[`manager/dockerfile/extract extractPackageFile() handles custom hosts with port 1`] = `
 Array [
   Object {
     "autoReplaceStringTemplate": "{{depName}}{{#if newValue}}:{{newValue}}{{/if}}{{#if newDigest}}@{{newDigest}}{{/if}}",
-    "commitMessageTopic": "Node.js",
     "currentDigest": undefined,
     "currentValue": "8",
     "datasource": "docker",
-    "depName": "registry2.something.info:5005/node",
+    "depName": "node",
     "depType": "final",
-    "replaceString": "registry2.something.info:5005/node:8",
+    "registryUrls": Array [
+      "https://registry2.something.info:5005",
+    ],
+    "replaceString": "node:8",
   },
 ]
 `;
 
-exports[`lib/manager/dockerfile/extract extractPackageFile() handles custom hosts with port without tag 1`] = `
+exports[`manager/dockerfile/extract extractPackageFile() handles custom hosts with port without tag 1`] = `
 Array [
   Object {
     "autoReplaceStringTemplate": "{{depName}}{{#if newValue}}:{{newValue}}{{/if}}{{#if newDigest}}@{{newDigest}}{{/if}}",
-    "commitMessageTopic": "Node.js",
     "currentDigest": undefined,
     "currentValue": undefined,
     "datasource": "docker",
-    "depName": "registry2.something.info:5005/node",
+    "depName": "node",
     "depType": "final",
-    "replaceString": "registry2.something.info:5005/node",
+    "registryUrls": Array [
+      "https://registry2.something.info:5005",
+    ],
+    "replaceString": "node",
   },
 ]
 `;
 
-exports[`lib/manager/dockerfile/extract extractPackageFile() handles digest 1`] = `
+exports[`manager/dockerfile/extract extractPackageFile() handles digest 1`] = `
 Array [
   Object {
     "autoReplaceStringTemplate": "{{depName}}{{#if newValue}}:{{newValue}}{{/if}}{{#if newDigest}}@{{newDigest}}{{/if}}",
-    "commitMessageTopic": "Node.js",
     "currentDigest": "sha256:eb85fc5b1198f5e1ec025ea07586bdbbf397e7d82df66c90d7511f533517e063",
     "currentValue": undefined,
     "datasource": "docker",
@@ -229,11 +325,10 @@ Array [
 ]
 `;
 
-exports[`lib/manager/dockerfile/extract extractPackageFile() handles from as 1`] = `
+exports[`manager/dockerfile/extract extractPackageFile() handles from as 1`] = `
 Array [
   Object {
     "autoReplaceStringTemplate": "{{depName}}{{#if newValue}}:{{newValue}}{{/if}}{{#if newDigest}}@{{newDigest}}{{/if}}",
-    "commitMessageTopic": "Node.js",
     "currentDigest": undefined,
     "currentValue": "8.9.0-alpine",
     "datasource": "docker",
@@ -244,11 +339,10 @@ Array [
 ]
 `;
 
-exports[`lib/manager/dockerfile/extract extractPackageFile() handles naked dep 1`] = `
+exports[`manager/dockerfile/extract extractPackageFile() handles naked dep 1`] = `
 Array [
   Object {
     "autoReplaceStringTemplate": "{{depName}}{{#if newValue}}:{{newValue}}{{/if}}{{#if newDigest}}@{{newDigest}}{{/if}}",
-    "commitMessageTopic": "Node.js",
     "currentDigest": undefined,
     "currentValue": undefined,
     "datasource": "docker",
@@ -259,11 +353,10 @@ Array [
 ]
 `;
 
-exports[`lib/manager/dockerfile/extract extractPackageFile() handles namespaced images 1`] = `
+exports[`manager/dockerfile/extract extractPackageFile() handles namespaced images 1`] = `
 Array [
   Object {
     "autoReplaceStringTemplate": "{{depName}}{{#if newValue}}:{{newValue}}{{/if}}{{#if newDigest}}@{{newDigest}}{{/if}}",
-    "commitMessageTopic": "Node.js",
     "currentDigest": undefined,
     "currentValue": "8",
     "datasource": "docker",
@@ -274,11 +367,28 @@ Array [
 ]
 `;
 
-exports[`lib/manager/dockerfile/extract extractPackageFile() handles tag 1`] = `
+exports[`manager/dockerfile/extract extractPackageFile() handles registries with a path 1`] = `
 Array [
   Object {
     "autoReplaceStringTemplate": "{{depName}}{{#if newValue}}:{{newValue}}{{/if}}{{#if newDigest}}@{{newDigest}}{{/if}}",
-    "commitMessageTopic": "Node.js",
+    "currentDigest": undefined,
+    "currentValue": "12.19.1",
+    "datasource": "docker",
+    "depName": "node",
+    "depType": "final",
+    "lookupName": "library/node",
+    "registryUrls": Array [
+      "https://registry.example.com/proxy-cache",
+    ],
+    "replaceString": "library/node:12.19.1",
+  },
+]
+`;
+
+exports[`manager/dockerfile/extract extractPackageFile() handles tag 1`] = `
+Array [
+  Object {
+    "autoReplaceStringTemplate": "{{depName}}{{#if newValue}}:{{newValue}}{{/if}}{{#if newDigest}}@{{newDigest}}{{/if}}",
     "currentDigest": undefined,
     "currentValue": "8.9.0-alpine",
     "datasource": "docker",
@@ -289,11 +399,10 @@ Array [
 ]
 `;
 
-exports[`lib/manager/dockerfile/extract extractPackageFile() handles tag and digest 1`] = `
+exports[`manager/dockerfile/extract extractPackageFile() handles tag and digest 1`] = `
 Array [
   Object {
     "autoReplaceStringTemplate": "{{depName}}{{#if newValue}}:{{newValue}}{{/if}}{{#if newDigest}}@{{newDigest}}{{/if}}",
-    "commitMessageTopic": "Node.js",
     "currentDigest": "sha256:eb85fc5b1198f5e1ec025ea07586bdbbf397e7d82df66c90d7511f533517e063",
     "currentValue": "8.9.0",
     "datasource": "docker",
@@ -304,7 +413,7 @@ Array [
 ]
 `;
 
-exports[`lib/manager/dockerfile/extract extractPackageFile() handles ubuntu 1`] = `
+exports[`manager/dockerfile/extract extractPackageFile() handles ubuntu 1`] = `
 Array [
   Object {
     "autoReplaceStringTemplate": "{{depName}}{{#if newValue}}:{{newValue}}{{/if}}{{#if newDigest}}@{{newDigest}}{{/if}}",
@@ -319,11 +428,10 @@ Array [
 ]
 `;
 
-exports[`lib/manager/dockerfile/extract extractPackageFile() is case insensitive 1`] = `
+exports[`manager/dockerfile/extract extractPackageFile() is case insensitive 1`] = `
 Array [
   Object {
     "autoReplaceStringTemplate": "{{depName}}{{#if newValue}}:{{newValue}}{{/if}}{{#if newDigest}}@{{newDigest}}{{/if}}",
-    "commitMessageTopic": "Node.js",
     "currentDigest": undefined,
     "currentValue": undefined,
     "datasource": "docker",
@@ -334,11 +442,10 @@ Array [
 ]
 `;
 
-exports[`lib/manager/dockerfile/extract extractPackageFile() skips index reference COPY --from tags 1`] = `
+exports[`manager/dockerfile/extract extractPackageFile() skips index reference COPY --from tags 1`] = `
 Array [
   Object {
     "autoReplaceStringTemplate": "{{depName}}{{#if newValue}}:{{newValue}}{{/if}}{{#if newDigest}}@{{newDigest}}{{/if}}",
-    "commitMessageTopic": "Node.js",
     "currentDigest": undefined,
     "currentValue": "6.12.3",
     "datasource": "docker",
@@ -349,11 +456,10 @@ Array [
 ]
 `;
 
-exports[`lib/manager/dockerfile/extract extractPackageFile() skips named multistage COPY --from tags 1`] = `
+exports[`manager/dockerfile/extract extractPackageFile() skips named multistage COPY --from tags 1`] = `
 Array [
   Object {
     "autoReplaceStringTemplate": "{{depName}}{{#if newValue}}:{{newValue}}{{/if}}{{#if newDigest}}@{{newDigest}}{{/if}}",
-    "commitMessageTopic": "Node.js",
     "currentDigest": undefined,
     "currentValue": "6.12.3",
     "datasource": "docker",
@@ -364,11 +470,10 @@ Array [
 ]
 `;
 
-exports[`lib/manager/dockerfile/extract extractPackageFile() skips named multistage FROM tags 1`] = `
+exports[`manager/dockerfile/extract extractPackageFile() skips named multistage FROM tags 1`] = `
 Array [
   Object {
     "autoReplaceStringTemplate": "{{depName}}{{#if newValue}}:{{newValue}}{{/if}}{{#if newDigest}}@{{newDigest}}{{/if}}",
-    "commitMessageTopic": "Node.js",
     "currentDigest": undefined,
     "currentValue": "6.12.3",
     "datasource": "docker",
@@ -379,7 +484,7 @@ Array [
 ]
 `;
 
-exports[`lib/manager/dockerfile/extract getDep() rejects null 1`] = `
+exports[`manager/dockerfile/extract getDep() rejects null 1`] = `
 Object {
   "skipReason": "invalid-value",
 }

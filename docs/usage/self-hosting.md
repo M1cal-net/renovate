@@ -2,43 +2,45 @@
 
 ## Installing Renovate OSS CLI
 
-#### npmjs
+### npmjs
 
 ```sh
-$ npm install -g renovate
+npm install -g renovate
 ```
 
-Since renovate v20 `npm`, `pnpm` and `yarn` are no longer embedded, so you need to install them globally if you need to update lockfiles.
+Renovate does not embed `npm`, `pnpm` and `yarn` as its own dependencies.
+If you want to use these package managers to update your lockfiles, you must ensure that the correct versions are already installed globally.
 
 ```sh
-$ npm install -g yarn pnpm
+npm install -g yarn pnpm
 ```
 
-The same goes for any other third party binary tool that may be needed, such as `gradle` or `poetry` - you need to make sure they are installed and the appropriate version you need before running Renovate.
+The same goes for any other third party binary tool like `gradle` or `poetry` - you need to make sure they are installed and the appropriate version before running Renovate.
 
-#### Docker
+### Docker
 
 Renovate is available for Docker via an automated build [renovate/renovate](https://hub.docker.com/r/renovate/renovate/).
-It builds `latest` based on the `master` branch and all semver tags are published too.
-All the following are valid:
+It builds `latest` based on the `main` branch and all semver tags are published too.
+For example, all the following are valid tags:
 
 ```sh
-$ docker run --rm renovate/renovate
-$ docker run --rm renovate/renovate:19.181.2
-$ docker run --rm renovate/renovate:19.181
-$ docker run --rm renovate/renovate:19
+docker run --rm renovate/renovate
+docker run --rm renovate/renovate:25.63.1
+docker run --rm renovate/renovate:25.63
+docker run --rm renovate/renovate:25
 ```
 
-(Please look up what the latest actual tags are though, do not use the above literally).
+Do not use the example tags listed above, as they will be out-of-date.
+Go to [renovate/renovate tags](https://hub.docker.com/r/renovate/renovate/tags) to grab the latest tagged release from Renovate.
 
-If you wish to configure Renovate using a `config.js` file then map it to `/usr/src/app/config.js` using Docker volumes.
+If you want to configure Renovate using a `config.js` file then map it to `/usr/src/app/config.js` using Docker volumes.
 For example:
 
 ```sh
-$ docker run --rm -v "/path/to/your/config.js:/usr/src/app/config.js" renovate/renovate
+docker run --rm -v "/path/to/your/config.js:/usr/src/app/config.js" renovate/renovate
 ```
 
-#### Kubernetes
+### Kubernetes
 
 Renovate's official Docker image is compatible with Kubernetes.
 The following is an example manifest of running Renovate against a GitHub Enterprise server.
@@ -60,10 +62,13 @@ spec:
             - name: renovate
               # Update this to the latest available and then enable Renovate on
               # the manifest
-              image: renovate/renovate:23.19.2
+              image: renovate/renovate:25.63.1
               args:
                 - user/repo
               # Environment Variables
+              env:
+                - name: LOG_LEVEL
+                  value: debug
               envFrom:
                 - secretRef:
                     name: renovate-env
@@ -80,7 +85,7 @@ metadata:
 type: Opaque
 stringData:
   GITHUB_COM_TOKEN: 'any-personal-user-token-for-github-com-for-fetching-changelogs'
-  # set to true to run on all repos you have push access to
+  # You can set RENOVATE_AUTODISCOVER to true to run Renovate on all repos you have push access to
   RENOVATE_AUTODISCOVER: 'false'
   RENOVATE_ENDPOINT: 'https://github.company.com/api/v3'
   RENOVATE_GIT_AUTHOR: 'Renovate Bot <bot@renovateapp.com>'
@@ -88,7 +93,7 @@ stringData:
   RENOVATE_TOKEN: 'your-github-enterprise-renovate-user-token'
 ```
 
-A `config.js` file can be added to the manifest using a `ConfigMap` as shown in the following example (using a "dry run" in github.com)
+A `config.js` file can be added to the manifest using a `ConfigMap` as shown in the following example (using a "dry run" in github.com):
 
 ```yaml
 ---
@@ -99,7 +104,6 @@ metadata:
 data:
   config.json: |-
     {
-      "logLevel" : "debug",
       "repositories": ["orgname/repo","username/repo"],
       "dryRun" : "true"
     }
@@ -117,7 +121,7 @@ spec:
       template:
         spec:
           containers:
-            - image: renovate/renovate:23.22.1
+            - image: renovate/renovate:25.63.1
               name: renovate-bot
               env: # For illustration purposes, please use secrets.
                 - name: RENOVATE_PLATFORM
@@ -130,6 +134,8 @@ spec:
                   value: '/tmp/renovate/'
                 - name: RENOVATE_CONFIG_FILE
                   value: '/opt/renovate/config.json'
+                - name: LOG_LEVEL
+                  value: debug
               volumeMounts:
                 - name: config-volume
                   mountPath: /opt/renovate/
@@ -144,7 +150,7 @@ spec:
               emptyDir: {}
 ```
 
-#### CircleCI
+### CircleCI
 
 If you are using CircleCI, you can use the third-party [daniel-shuy/renovate](https://circleci.com/developer/orbs/orb/daniel-shuy/renovate) orb to run a self-hosted instance of Renovate on CircleCI.
 
@@ -160,7 +166,7 @@ The following example runs Renovate hourly, and looks for the self-hosted config
 ```yml
 version: '2.1'
 orbs:
-  renovate: daniel-shuy/renovate@2.1
+  renovate: daniel-shuy/renovate@2.1.1
 workflows:
   renovate:
     jobs:
@@ -173,10 +179,10 @@ workflows:
             filters:
               branches:
                 only:
-                  - master
+                  - main
 ```
 
-#### GitLab CI/CD pipeline
+### GitLab CI/CD pipeline
 
 For GitLab pipelines we recommend you use the [renovate-runner project on GitLab](https://gitlab.com/renovate-bot/renovate-runner).
 We've prepared some pipeline templates to run Renovate on pipeline schedules in an easy way.
@@ -189,11 +195,20 @@ For self-hosted GitLab clone/import the [renovate-runner](https://gitlab.com/ren
 Self-hosted Renovate can be configured using any of the following (or a combination):
 
 - A `config.js` file (can also be named `config.json`, but you can't have both at the same time)
-- CLI params
-- Environment params
+- CLI parameters
+- Environment variables
 
 Note that some Renovate configuration options are _only_ available for self-hosting, and so can only be configured using one of the above methods.
 These are described in the [Self-hosted Configuration](./self-hosted-configuration.md) doc.
+
+If you are configuring using environment variables, there are two possibilities:
+
+- Upper-cased, camel-cased, `RENOVATE_`-prefixed single config options like `RENOVATE_TOKEN=abc123` or `RENOVATE_GIT_AUTHOR=a@b.com`
+- Set `RENOVATE_CONFIG` to a [stringified](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/JSON/stringify) version of the full JSON config, e.g. `RENOVATE_CONFIG='{"token":"abc123","gitAuthor":"a@b.com"}'`
+
+If you combine both of the above then any single config option in the environment variable will override what's in `RENOVATE_CONFIG`.
+
+Note: it's also possible to change the default prefix from `RENOVATE_` using `ENV_PREFIX`. e.g. `ENV_PREFIX=RNV_ RNV_TOKEN=abc123 renovate`.
 
 ## Authentication
 
@@ -201,32 +216,78 @@ Regardless of platform, you need to select a user account for `renovate` to assu
 It is recommended to be `@renovate-bot` if you are using a self-hosted server with free choice of usernames.
 It is also recommended that you configure `config.gitAuthor` with the same identity as your Renovate user, e.g. like `"gitAuthor": "Renovate Bot <renovate@whitesourcesoftware.com>"`.
 
-#### GitHub Enterprise
+### GitHub (Enterprise Server)
 
 First, [create a personal access token](https://help.github.com/articles/creating-an-access-token-for-command-line-use/) for the bot account (select "repo" permissions).
 Configure it either as `token` in your `config.js` file, or in environment variable `RENOVATE_TOKEN`, or via CLI `--token=`.
 
-#### GitLab CE/EE
+For GitHub Enterprise Server set the `endpoint` in your `config.js` to `https://github.enterprise.com/api/v3/`.
+
+#### Running as a GitHub App
+
+Instead of a bot account and a personal access token you can run `renovate` as a self-hosted [GitHub App](https://docs.github.com/en/developers/apps/getting-started-with-apps).
+
+When creating the GitHub App give it the following permissions:
+
+- Checks: Read & write
+- Contents: Read & write
+- Issues: Read & write
+- Metadata: Read-only
+- Pull requests: Read & write
+- Commit statuses: Read & write
+- Dependabot alerts: Read-only
+- Workflows: Read & write
+
+Other values like Homepage URL, User authorization callback URL and webhooks can be disabled or filled with dummy values.
+
+Inside your `config.js` you need to set the following values, assuming the name of your app is `self-hosted-renovate`:
+
+**`username:"self-hosted-renovate[bot]"`**
+
+The slug name of your app with `[bot]` appended
+
+**`gitAuthor:"Self-hosted Renovate Bot <123456+self-hosted-renovate[bot]@users.noreply.github.enterprise.com>"`**
+
+The [GitHub App associated email](https://github.community/t/logging-into-git-as-a-github-app/115916/2) to match commits to the bot.
+It needs to contain the user id _and_ the username followed by the `users.noreply.`-domain of either github.com or the GitHub Enterprise Server.
+A way to get the user id of a GitHub app is to [query the user API](https://docs.github.com/en/rest/reference/users#get-a-user) at `api.github.com/user/self-hosted-renovate[bot]` (github.com) or `github.enterprise.com/api/v3/uer/self-hosted-renovate[bot]` (GitHub Enterprise Server).
+
+**`token:"x-access-token:${github-app-installation}"`**
+
+The token needs to be prefixed with `x-access-token` and be a [GitHub App Installation token](https://docs.github.com/en/developers/apps/building-github-apps/authenticating-with-github-apps#authenticating-as-an-installation).
+**Note** The installation tokens expire after 1 hour and need to be regenerated regularly.
+Alternatively as environment variable `RENOVATE_TOKEN`, or via CLI `--token=`.
+
+**`repositories: ["orgname/repo-1","orgname/repo-2"]`**
+
+List of repositories to run on.
+Auto discovery does not work with a GitHub App.
+Alternatively as comma-seperated environment variable `RENOVATE_REPOSITORIES`.
+The GitHub App installation token is scoped at most to a single organization and running on multiple organizations requires multiple invocations of `renovate` with different `token` and `repositories` parameters.
+
+### GitLab CE/EE
 
 First, [create a personal access token](https://docs.gitlab.com/ee/user/profile/personal_access_tokens.html) for the bot account (select `read_user`, `api` and `write_repository` scopes).
 Configure it either as `token` in your `config.js` file, or in environment variable `RENOVATE_TOKEN`, or via CLI `--token=`.
 Don't forget to configure `platform=gitlab` somewhere in config.
 
-#### Bitbucket Cloud
+### Bitbucket Cloud
 
 First, [create an AppPassword](https://confluence.atlassian.com/bitbucket/app-passwords-828781300.html) for the bot account.
 Configure it as `password` in your `config.js` file, or in environment variable `RENOVATE_PASSWORD`, or via CLI `--password=`.
 Also be sure to configure the `username` for your bot account too.
 Don't forget to configure `platform=bitbucket` somewhere in config.
 
-#### Bitbucket Server
+### Bitbucket Server
 
 Create a [Personal Access Token](https://confluence.atlassian.com/bitbucketserver/personal-access-tokens-939515499.html) for your bot account.
 Configure it as `password` in your `config.js` file, or in environment variable `RENOVATE_PASSWORD`, or via CLI `--password=`.
 Also configure the `username` for your bot account too, if you decided not to name it `@renovate-bot`.
 Don't forget to configure `platform=bitbucket-server` somewhere in config.
 
-#### Azure DevOps
+If you use MySQL or MariaDB you must set `unicodeEmoji` to `false` in the bot config (`RENOVATE_CONFIG_FILE`) to prevent issues with emojis.
+
+### Azure DevOps
 
 First, [create a personal access token](https://docs.microsoft.com/en-us/azure/devops/integrate/get-started/authentication/pats) for the bot account.
 Configure it either as `token` in your `config.js` file, or in environment variable `RENOVATE_TOKEN`, or via CLI `--token=`.
@@ -245,19 +306,23 @@ This account can actually be _any_ account on GitHub, and needs only read-only a
 It's used when fetching release notes for repositories in order to increase the hourly API limit.
 It's also OK to configure the same as a host rule instead, if you prefer that.
 
-**Note:** If you're using renovate in a project where dependencies are loaded from github.com (such as Go m=Modules hosted on GitHub) it is highly recommended to add a token as you will run in the rate limit from the github.com API, which will lead to renovate closing and reopening PRs because it could not get reliable info on updated dependencies.
+**Note:** If you're using Renovate in a project where dependencies are loaded from github.com (such as Go modules hosted on GitHub) it is highly recommended to add a token as you will run in the rate limit from the github.com API, which will lead to Renovate closing and reopening PRs because it could not get reliable info on updated dependencies.
 
 ## File/directory usage
 
-By default, Renovate will store all files within a `renovate/` subdirectory of the operating system's temporary directory, e.g. `/tmp/renovate/`.
+By default, Renovate stores all files in the `renovate/` subdirectory of the operating system's temporary directory, e.g. `/tmp/renovate/`.
 
-Repository data will be copied or cloned into unique subdirectories under `repos/`, e.g. `/tmp/renovate/repos/github/owner1/repo-a/`.
+Repository data is copied or cloned into unique subdirectories under `repos/`, e.g. `/tmp/renovate/repos/github/owner1/repo-a/`.
 
-Cache data - such as Renovate's own cache as well as that for npm, Yarn, Composer, etc - will be stored in `/tmp/renovate/cache`.
+Renovate's own cache, as well as the caches(s) for npm, Yarn, Composer etc, is stored in `/tmp/renovate/cache`.
 
-If you wish to override the base directory to be used (e.g. instead of `/tmp/renovate/`) then configure a value for `baseDir` in `config.js`, or via env (`RENOVATE_BASE_DIR`) or via CLI (`--base-dir=`).
+To use another directory as the base directory, instead of `tmp/renovate`:
 
-If you wish to override the cache location specifically then configure a value for `cacheDir` instead.
+- Configure a value for `baseDir` in `config.js`
+- Use an environment variable `RENOVATE_BASE_DIR`
+- Use the CLI to pass a base directory: `--base-dir=`
+
+If you want to override the cache location then configure a value for `cacheDir` instead.
 
 ## Usage
 
@@ -274,7 +339,6 @@ module.exports = {
   endpoint: 'https://self-hosted.gitlab/api/v4/',
   token: '**gitlab_token**',
   platform: 'gitlab',
-  logLevel: 'debug',
   onboardingConfig: {
     extends: ['config:base'],
   },
@@ -289,7 +353,8 @@ If running against GitHub Enterprise, change the above `gitlab` values to the eq
 
 You can save this file as anything you want and then use `RENOVATE_CONFIG_FILE` env variable to tell Renovate where to find it.
 
-Most people will run Renovate via cron, e.g. once per hour. Here is an example bash script that you can point `cron` to:
+Most people will run Renovate via cron, e.g. once per hour.
+Here is an example bash script that you can point `cron` to:
 
 ```sh
 #!/bin/bash
@@ -345,7 +410,7 @@ metadata:
 ```
 
 Then you just need to add Git author, and mount volumes.
-The final configuration should look like something like this:
+The final configuration should look something like this:
 
 ```yml
 ---
@@ -398,7 +463,7 @@ spec:
           containers:
             - name: renovate
               # Update this to the latest available and then enable Renovate on the manifest
-              image: renovate/renovate:23.19.2
+              image: renovate/renovate:25.63.1
               volumeMounts:
                 - name: ssh-key-volume
                   readOnly: true
@@ -416,3 +481,18 @@ spec:
 
 It's recommended to configure `LOG_LEVEL=debug` and `LOG_FORMAT=json` in environment if you are ingesting/parsing logs into another system.
 Debug logging is usually necessary for any debugging, while JSON format will mean that the output is parseable.
+
+### About the log level numbers
+
+When you use `LOG_LEVEL=debug` and `LOG_FORMAT=json`, Renovate uses numbers in the `level` field.
+
+The logging level output is controlled by the Bunyan logging library.
+
+| Level | Meaning |
+| ----: | ------- |
+|    10 | trace   |
+|    20 | debug   |
+|    30 | info    |
+|    40 | warn    |
+|    50 | error   |
+|    60 | fatal   |

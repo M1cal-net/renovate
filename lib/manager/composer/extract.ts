@@ -5,9 +5,13 @@ import { logger } from '../../logger';
 import { SkipReason } from '../../types';
 import { readLocalFile } from '../../util/fs';
 import { api as semverComposer } from '../../versioning/composer';
-import { PackageDependency, PackageFile } from '../common';
-import type { ComposerConfig, ComposerLock, Repo } from './types';
-import { extractContraints } from './utils';
+import type { PackageDependency, PackageFile } from '../types';
+import type {
+  ComposerConfig,
+  ComposerLock,
+  ComposerManagerData,
+  Repo,
+} from './types';
 
 /**
  * The regUrl is expected to be a base URL. GitLab composer repository installation guide specifies
@@ -95,6 +99,7 @@ export async function extractPackageFile(
   let lockParsed: ComposerLock;
   if (lockContents) {
     logger.debug({ packageFile: fileName }, 'Found composer lock file');
+    res.lockFiles = [lockfilePath];
     try {
       lockParsed = JSON.parse(lockContents) as ComposerLock;
     } catch (err) /* istanbul ignore next */ {
@@ -109,8 +114,6 @@ export async function extractPackageFile(
   if (registryUrls.length !== 0) {
     res.registryUrls = registryUrls;
   }
-
-  res.constraints = extractContraints(composerJson, lockParsed);
 
   const deps = [];
   const depTypes = ['require', 'require-dev'];
@@ -175,8 +178,11 @@ export async function extractPackageFile(
     return null;
   }
   res.deps = deps;
-  if (composerJson.type) {
-    res.managerData = { composerJsonType: composerJson.type };
+  if (is.string(composerJson.type)) {
+    const managerData: ComposerManagerData = {
+      composerJsonType: composerJson.type,
+    };
+    res.managerData = managerData;
   }
   return res;
 }

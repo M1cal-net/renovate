@@ -1,4 +1,5 @@
-import { RenovateConfig } from '../../config';
+import { getAdminConfig } from '../../config/admin';
+import type { RenovateConfig } from '../../config/types';
 import { logger } from '../../logger';
 import { platform } from '../../platform';
 import { branchExists, isBranchModified, isBranchStale } from '../../util/git';
@@ -34,7 +35,7 @@ export async function shouldReuseExistingBranch(
     if (pr.labels?.includes(config.rebaseLabel)) {
       logger.debug(`Manual rebase requested via PR labels for #${pr.number}`);
       // istanbul ignore if
-      if (config.dryRun) {
+      if (getAdminConfig().dryRun) {
         logger.info(
           `DRY-RUN: Would delete label ${config.rebaseLabel} from #${pr.number}`
         );
@@ -47,19 +48,24 @@ export async function shouldReuseExistingBranch(
 
   if (
     config.rebaseWhen === 'behind-base-branch' ||
-    (config.rebaseWhen === 'auto' && (await platform.getRepoForceRebase())) ||
-    (config.automerge && config.automergeType === 'branch')
+    (config.rebaseWhen === 'auto' &&
+      (config.automerge || (await platform.getRepoForceRebase())))
   ) {
     if (await isBranchStale(branchName)) {
       logger.debug(`Branch is stale and needs rebasing`);
       // We can rebase the branch only if no PR or PR can be rebased
       if (await isBranchModified(branchName)) {
-        // TODO: Warn here so that it appears in PR body
+        // TODO: Warn here so that it appears in PR body (#9720)
         logger.debug('Cannot rebase branch as it has been modified');
         return { reuseExistingBranch: true, isModified: true };
       }
       return { reuseExistingBranch: false };
     }
+    logger.debug('Branch is up-to-date');
+  } else {
+    logger.debug(
+      `Skipping stale branch check due to rebaseWhen=${config.rebaseWhen}`
+    );
   }
 
   // Now check if PR is unmergeable. If so then we also rebase
@@ -76,7 +82,7 @@ export async function shouldReuseExistingBranch(
       return { reuseExistingBranch: false };
     }
     // Don't do anything different, but warn
-    // TODO: Add warning to PR
+    // TODO: Add warning to PR (#9720)
     logger.debug(`Branch is not mergeable but can't be rebased`);
   }
   logger.debug(`Branch does not need rebasing`);

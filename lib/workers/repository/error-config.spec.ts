@@ -1,5 +1,11 @@
 import { mock } from 'jest-mock-extended';
-import { RenovateConfig, getConfig, platform } from '../../../test/util';
+import {
+  RenovateConfig,
+  getConfig,
+  getName,
+  platform,
+} from '../../../test/util';
+import { setAdminConfig } from '../../config/admin';
 import { CONFIG_VALIDATION } from '../../constants/error-messages';
 import { Pr } from '../../platform';
 import { PrState } from '../../types';
@@ -13,11 +19,14 @@ beforeEach(() => {
   config = getConfig();
 });
 
-describe('workers/repository/error-config', () => {
+describe(getName(), () => {
   describe('raiseConfigWarningIssue()', () => {
+    beforeEach(() => {
+      setAdminConfig();
+    });
     it('creates issues', async () => {
       const error = new Error(CONFIG_VALIDATION);
-      error.configFile = 'package.json';
+      error.validationSource = 'package.json';
       error.validationMessage = 'some-message';
       platform.ensureIssue.mockResolvedValueOnce('created');
       const res = await raiseConfigWarningIssue(config, error);
@@ -25,18 +34,16 @@ describe('workers/repository/error-config', () => {
     });
     it('creates issues (dryRun)', async () => {
       const error = new Error(CONFIG_VALIDATION);
-      error.configFile = 'package.json';
+      error.validationSource = 'package.json';
       error.validationMessage = 'some-message';
       platform.ensureIssue.mockResolvedValueOnce('created');
-      const res = await raiseConfigWarningIssue(
-        { ...config, dryRun: true },
-        error
-      );
+      setAdminConfig({ dryRun: true });
+      const res = await raiseConfigWarningIssue(config, error);
       expect(res).toBeUndefined();
     });
     it('handles onboarding', async () => {
       const error = new Error(CONFIG_VALIDATION);
-      error.configFile = 'package.json';
+      error.validationSource = 'package.json';
       error.validationMessage = 'some-message';
       platform.getBranchPr.mockResolvedValue({
         ...mock<Pr>(),
@@ -48,17 +55,15 @@ describe('workers/repository/error-config', () => {
     });
     it('handles onboarding (dryRun)', async () => {
       const error = new Error(CONFIG_VALIDATION);
-      error.configFile = 'package.json';
+      error.validationSource = 'package.json';
       error.validationMessage = 'some-message';
       platform.getBranchPr.mockResolvedValue({
         ...mock<Pr>(),
         number: 1,
         state: PrState.Open,
       });
-      const res = await raiseConfigWarningIssue(
-        { ...config, dryRun: true },
-        error
-      );
+      setAdminConfig({ dryRun: true });
+      const res = await raiseConfigWarningIssue(config, error);
       expect(res).toBeUndefined();
     });
   });

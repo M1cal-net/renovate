@@ -1,4 +1,5 @@
 import { getName, mocked } from '../../../test/util';
+import { setAdminConfig } from '../../config/admin';
 import * as _sanitize from '../../util/sanitize';
 import { getNpmrc, setNpmrc } from './npmrc';
 
@@ -6,11 +7,10 @@ jest.mock('../../util/sanitize');
 
 const sanitize = mocked(_sanitize);
 
-describe(getName(__filename), () => {
+describe(getName(), () => {
   beforeEach(() => {
-    delete process.env.NPM_TOKEN;
-    delete global.trustLevel;
     setNpmrc('');
+    setAdminConfig();
     jest.resetAllMocks();
   });
 
@@ -38,7 +38,7 @@ describe(getName(__filename), () => {
   });
 
   it('sanitize _authtoken with high trust', () => {
-    global.trustLevel = 'high';
+    setAdminConfig({ exposeAllEnv: true });
     process.env.TEST_TOKEN = 'test';
     setNpmrc(
       // eslint-disable-next-line no-template-curly-in-string
@@ -51,6 +51,6 @@ describe(getName(__filename), () => {
   it('ignores localhost', () => {
     setNpmrc(`registry=http://localhost`);
     expect(sanitize.add).toHaveBeenCalledTimes(0);
-    expect(getNpmrc()).toBeNull();
+    expect(getNpmrc()).toEqual({});
   });
 });

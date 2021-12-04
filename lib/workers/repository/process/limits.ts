@@ -1,10 +1,11 @@
 import { DateTime } from 'luxon';
-import { RenovateConfig } from '../../../config';
+import type { RenovateConfig } from '../../../config/types';
 import { logger } from '../../../logger';
 import { Pr, platform } from '../../../platform';
 import { PrState } from '../../../types';
 import { ExternalHostError } from '../../../types/errors/external-host-error';
-import { BranchConfig } from '../../common';
+import { branchExists } from '../../../util/git';
+import type { BranchConfig } from '../../types';
 
 export async function getPrHourlyRemaining(
   config: RenovateConfig
@@ -82,5 +83,50 @@ export async function getPrsRemaining(
 ): Promise<number> {
   const hourlyRemaining = await getPrHourlyRemaining(config);
   const concurrentRemaining = await getConcurrentPrsRemaining(config, branches);
+  return Math.min(hourlyRemaining, concurrentRemaining);
+}
+
+export function getConcurrentBranchesRemaining(
+  config: RenovateConfig,
+  branches: BranchConfig[]
+): number {
+  const { branchConcurrentLimit, prConcurrentLimit } = config;
+  const limit =
+    typeof branchConcurrentLimit === 'number'
+      ? branchConcurrentLimit
+      : prConcurrentLimit;
+  if (typeof limit === 'number' && limit) {
+    logger.debug(`Calculating branchConcurrentLimit (${limit})`);
+    try {
+      const existingBranches: string[] = [];
+      for (const branch of branches) {
+        if (branchExists(branch.branchName)) {
+          existingBranches.push(branch.branchName);
+        }
+      }
+
+      const existingCount = existingBranches.length;
+      logger.debug(
+        `${existingCount} already existing branches found: ${existingBranches.join()}`
+      );
+
+      const concurrentRemaining = Math.max(0, limit - existingCount);
+      logger.debug(`Branch concurrent limit remaining: ${concurrentRemaining}`);
+
+      return concurrentRemaining;
+    } catch (err) {
+      logger.error({ err }, 'Error checking concurrent branches');
+      return limit;
+    }
+  }
+  return 99;
+}
+
+export async function getBranchesRemaining(
+  config: RenovateConfig,
+  branches: BranchConfig[]
+): Promise<number> {
+  const hourlyRemaining = await getPrHourlyRemaining(config);
+  const concurrentRemaining = getConcurrentBranchesRemaining(config, branches);
   return Math.min(hourlyRemaining, concurrentRemaining);
 }

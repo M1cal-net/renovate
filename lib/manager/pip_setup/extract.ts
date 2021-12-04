@@ -1,14 +1,15 @@
+import { getAdminConfig } from '../../config/admin';
 import * as datasourcePypi from '../../datasource/pypi';
 import { logger } from '../../logger';
 import { SkipReason } from '../../types';
 import { exec } from '../../util/exec';
-import { BinarySource } from '../../util/exec/common';
 import { isSkipComment } from '../../util/ignore';
-import { ExtractConfig, PackageDependency, PackageFile } from '../common';
 import { dependencyPattern } from '../pip_requirements/extract';
-import { PythonSetup, copyExtractFile, parseReport } from './util';
+import type { ExtractConfig, PackageDependency, PackageFile } from '../types';
+import type { PythonSetup } from './types';
+import { getExtractFile, parseReport } from './util';
 
-export const pythonVersions = ['python', 'python3', 'python3.8'];
+export const pythonVersions = ['python', 'python3', 'python3.8', 'python3.9'];
 let pythonAlias: string | null = null;
 
 export function resetModule(): void {
@@ -31,6 +32,7 @@ export async function getPythonAlias(): Promise<string> {
       const version = parsePythonVersion(stdout || stderr);
       if (version[0] >= 3 && version[1] >= 7) {
         pythonAlias = pythonVersion;
+        break;
       }
     } catch (err) {
       logger.debug(`${pythonVersion} alias not found`);
@@ -44,20 +46,19 @@ export async function extractSetupFile(
   packageFile: string,
   config: ExtractConfig
 ): Promise<PythonSetup> {
-  const cwd = config.localDir;
   let cmd = 'python';
-  const extractPy = await copyExtractFile();
+  const extractPy = await getExtractFile();
   const args = [`"${extractPy}"`, `"${packageFile}"`];
-  if (config.binarySource !== BinarySource.Docker) {
+  if (getAdminConfig().binarySource !== 'docker') {
     logger.debug('Running python via global command');
     cmd = await getPythonAlias();
   }
   logger.debug({ cmd, args }, 'python command');
   const res = await exec(`${cmd} ${args.join(' ')}`, {
-    cwd,
+    cwdFile: packageFile,
     timeout: 30000,
     docker: {
-      image: 'renovate/pip',
+      image: 'python',
     },
   });
   if (res.stderr) {
@@ -69,7 +70,7 @@ export async function extractSetupFile(
       logger.warn({ stdout: res.stdout, stderr }, 'Error in read setup file');
     }
   }
-  return parseReport();
+  return parseReport(packageFile);
 }
 
 export async function extractPackageFile(
@@ -82,7 +83,7 @@ export async function extractPackageFile(
   try {
     setup = await extractSetupFile(content, packageFile, config);
   } catch (err) {
-    logger.warn({ err, content, packageFile }, 'Failed to read setup.py file');
+    logger.debug({ err, content, packageFile }, 'Failed to read setup.py file');
   }
   if (!setup) {
     return null;

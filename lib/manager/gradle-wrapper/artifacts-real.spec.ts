@@ -3,17 +3,23 @@ import Git from 'simple-git';
 import { resolve } from 'upath';
 import * as httpMock from '../../../test/http-mock';
 import { getName, git, partial } from '../../../test/util';
-import { setUtilConfig } from '../../util';
-import { StatusResult } from '../../util/git';
-import { ifSystemSupportsGradle } from '../gradle/__testutil__/gradle';
+import { setAdminConfig } from '../../config/admin';
+import type { RepoAdminConfig } from '../../config/types';
+import type { StatusResult } from '../../util/git';
+import { ifSystemSupportsGradle } from '../gradle/deep/__testutil__/gradle';
+import type { UpdateArtifactsConfig } from '../types';
 import * as dcUpdate from '.';
 
 jest.mock('../../util/git');
 
 const fixtures = resolve(__dirname, './__fixtures__');
-const config = {
+
+const adminConfig: RepoAdminConfig = {
   localDir: resolve(fixtures, './testFiles'),
-  toVersion: '5.6.4',
+};
+
+const config: UpdateArtifactsConfig = {
+  newValue: '5.6.4',
 };
 
 function readString(...paths: string[]): Promise<string> {
@@ -30,19 +36,18 @@ function compareFile(file: string, path: string) {
   );
 }
 
-describe(getName(__filename), () => {
+describe(getName(), () => {
   ifSystemSupportsGradle(6).describe('real tests', () => {
     jest.setTimeout(60 * 1000);
 
-    beforeEach(async () => {
+    beforeEach(() => {
       jest.resetAllMocks();
-      await setUtilConfig(config);
-      httpMock.setup();
+      setAdminConfig(adminConfig);
     });
 
     afterEach(async () => {
       await Git(fixtures).checkout(['HEAD', '--', '.']);
-      httpMock.reset();
+      setAdminConfig();
     });
 
     it('replaces existing value', async () => {
@@ -61,7 +66,7 @@ describe(getName(__filename), () => {
         newPackageFileContent: await readString(
           `./expectedFiles/gradle/wrapper/gradle-wrapper.properties`
         ),
-        config: { ...config, toVersion: '6.3' },
+        config: { ...config, newValue: '6.3' },
       });
 
       expect(res).toEqual(
@@ -99,7 +104,7 @@ describe(getName(__filename), () => {
         packageFileName: 'gradle/wrapper/gradle-wrapper.properties',
         updatedDeps: [],
         newPackageFileContent: ``,
-        config: { ...config, toVersion: '6.3' },
+        config: { ...config, newValue: '6.3' },
       });
 
       expect(result).toHaveLength(1);
@@ -158,16 +163,19 @@ describe(getName(__filename), () => {
     });
 
     it('gradlew failed', async () => {
-      const cfg = { ...config, localDir: resolve(fixtures, './wrongCmd') };
+      const wrongCmdConfig = {
+        ...adminConfig,
+        localDir: resolve(fixtures, './wrongCmd'),
+      };
 
-      await setUtilConfig(cfg);
+      setAdminConfig(wrongCmdConfig);
       const res = await dcUpdate.updateArtifacts({
         packageFileName: 'gradle/wrapper/gradle-wrapper.properties',
         updatedDeps: [],
         newPackageFileContent: await readString(
           `./testFiles/gradle/wrapper/gradle-wrapper.properties`
         ),
-        config: cfg,
+        config,
       });
 
       expect(res[0].artifactError.lockFile).toEqual(
@@ -183,13 +191,12 @@ describe(getName(__filename), () => {
     });
 
     it('gradlew not found', async () => {
+      setAdminConfig({ localDir: 'some-dir' });
       const res = await dcUpdate.updateArtifacts({
         packageFileName: 'gradle-wrapper.properties',
         updatedDeps: [],
         newPackageFileContent: undefined,
-        config: {
-          localDir: 'some-dir',
-        },
+        config: {},
       });
 
       expect(res).toBeNull();
@@ -221,7 +228,7 @@ describe(getName(__filename), () => {
         ),
         config: {
           ...config,
-          toVersion: '6.3',
+          newValue: '6.3',
           currentValue: '5.6.4',
         },
       });
@@ -231,7 +238,7 @@ describe(getName(__filename), () => {
 
       expect(
         await readString(
-          config.localDir,
+          adminConfig.localDir,
           `./gradle/wrapper/gradle-wrapper.properties`
         )
       ).toEqual(newContent);
@@ -239,13 +246,13 @@ describe(getName(__filename), () => {
       expect(httpMock.getTrace()).toEqual([
         {
           headers: {
-            'accept-encoding': 'gzip, deflate',
+            'accept-encoding': 'gzip, deflate, br',
             host: 'services.gradle.org',
-            'user-agent': 'https://github.com/renovatebot/renovate',
+            'user-agent':
+              'RenovateBot/0.0.0-semantic-release (https://github.com/renovatebot/renovate)',
           },
           method: 'GET',
-          url:
-            'https://services.gradle.org/distributions/gradle-6.3-bin.zip.sha256',
+          url: 'https://services.gradle.org/distributions/gradle-6.3-bin.zip.sha256',
         },
       ]);
     });
@@ -274,13 +281,13 @@ describe(getName(__filename), () => {
       expect(httpMock.getTrace()).toEqual([
         {
           headers: {
-            'accept-encoding': 'gzip, deflate',
+            'accept-encoding': 'gzip, deflate, br',
             host: 'services.gradle.org',
-            'user-agent': 'https://github.com/renovatebot/renovate',
+            'user-agent':
+              'RenovateBot/0.0.0-semantic-release (https://github.com/renovatebot/renovate)',
           },
           method: 'GET',
-          url:
-            'https://services.gradle.org/distributions/gradle-6.3-bin.zip.sha256',
+          url: 'https://services.gradle.org/distributions/gradle-6.3-bin.zip.sha256',
         },
       ]);
     });

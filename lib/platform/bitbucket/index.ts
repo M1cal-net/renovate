@@ -1,15 +1,16 @@
 import URL from 'url';
 import is from '@sindresorhus/is';
 import parseDiff from 'parse-diff';
+import type { MergeStrategy } from '../../config/types';
 import { REPOSITORY_NOT_FOUND } from '../../constants/error-messages';
 import { PLATFORM_TYPE_BITBUCKET } from '../../constants/platforms';
 import { logger } from '../../logger';
-import { BranchStatus, PrState } from '../../types';
+import { BranchStatus, PrState, VulnerabilityAlert } from '../../types';
 import * as git from '../../util/git';
 import * as hostRules from '../../util/host-rules';
 import { BitbucketHttp, setBaseUrl } from '../../util/http/bitbucket';
 import { sanitize } from '../../util/sanitize';
-import {
+import type {
   BranchStatusConfig,
   CreatePRConfig,
   EnsureCommentConfig,
@@ -24,13 +25,12 @@ import {
   RepoParams,
   RepoResult,
   UpdatePrConfig,
-  VulnerabilityAlert,
-} from '../common';
+} from '../types';
 import { smartTruncate } from '../utils/pr-body';
 import { readOnlyIssueBody } from '../utils/read-only-issue-body';
 import * as comments from './comments';
 import * as utils from './utils';
-import { PrResponse, RepoInfoBody } from './utils';
+import { PrResponse, RepoInfoBody, mergeBodyTransformer } from './utils';
 
 const bitbucketHttp = new BitbucketHttp();
 
@@ -79,7 +79,7 @@ export async function initPlatform({
       logger.debug({ err }, 'Unknown error fetching Bitbucket user identity');
     }
   }
-  // TODO: Add a connection check that endpoint/username/password combination are valid
+  // TODO: Add a connection check that endpoint/username/password combination are valid (#9594)
   const platformConfig: PlatformResult = {
     endpoint: endpoint || BITBUCKET_PROD_ENDPOINT,
   };
@@ -100,22 +100,28 @@ export async function getRepos(): Promise<string[]> {
   }
 }
 
-export async function getJsonFile(fileName: string): Promise<any | null> {
-  try {
-    return (
-      await bitbucketHttp.getJson(
-        `/2.0/repositories/${config.repository}/src/${config.defaultBranch}/${fileName}`
-      )
-    ).body;
-  } catch (err) {
-    return null;
-  }
+export async function getRawFile(
+  fileName: string,
+  repo: string = config.repository
+): Promise<string | null> {
+  // See: https://developer.atlassian.com/bitbucket/api/2/reference/resource/repositories/%7Bworkspace%7D/%7Brepo_slug%7D/src/%7Bcommit%7D/%7Bpath%7D
+  const path = fileName;
+  const url = `/2.0/repositories/${repo}/src/HEAD/${path}`;
+  const res = await bitbucketHttp.get(url);
+  return res.body;
+}
+
+export async function getJsonFile(
+  fileName: string,
+  repo: string = config.repository
+): Promise<any | null> {
+  const raw = await getRawFile(fileName, repo);
+  return JSON.parse(raw);
 }
 
 // Initialize bitbucket by getting base branch and SHA
 export async function initRepo({
   repository,
-  localDir,
   cloneSubmodules,
   ignorePrAuthor,
 }: RepoParams): Promise<RepoResult> {
@@ -140,11 +146,12 @@ export async function initRepo({
     );
     config.defaultBranch = info.mainbranch;
 
-    Object.assign(config, {
+    config = {
+      ...config,
       owner: info.owner,
       mergeMethod: info.mergeMethod,
       has_issues: info.has_issues,
-    });
+    };
 
     logger.debug(`${repository} owner = ${config.owner}`);
   } catch (err) /* istanbul ignore next */ {
@@ -171,7 +178,6 @@ export async function initRepo({
 
   await git.initRepo({
     ...config,
-    localDir,
     url,
     gitAuthorName: global.gitAuthor?.name,
     gitAuthorEmail: global.gitAuthor?.email,
@@ -186,7 +192,7 @@ export async function initRepo({
 
 // Returns true if repository has rule enforcing PRs are up-to-date with base branch before merging
 export function getRepoForceRebase(): Promise<boolean> {
-  // BB doesnt have an option to flag staled branches
+  // BB doesn't have an option to flag staled branches
   return Promise.resolve(false);
 }
 
@@ -207,15 +213,11 @@ export async function getPrList(): Promise<Pr[]> {
     logger.debug('Retrieving PR list');
     let url = `/2.0/repositories/${config.repository}/pullrequests?`;
     url += utils.prStates.all.map((state) => 'state=' + state).join('&');
+    if (renovateUserUuid && !config.ignorePrAuthor) {
+      url += `&q=author.uuid="${renovateUserUuid}"`;
+    }
     const prs = await utils.accumulateValues(url, undefined, undefined, 50);
-    config.prList = prs
-      .filter((pr) => {
-        const prAuthorId = pr?.author?.uuid;
-        return renovateUserUuid && prAuthorId && !config.ignorePrAuthor
-          ? renovateUserUuid === prAuthorId
-          : true;
-      })
-      .map(utils.prInfo);
+    config.prList = prs.map(utils.prInfo);
     logger.debug({ length: config.prList.length }, 'Retrieved Pull Requests');
   }
   return config.prList;
@@ -271,7 +273,7 @@ export async function getPr(prNo: number): Promise<Pr | null> {
   if (utils.prStates.open.includes(pr.state)) {
     res.isConflicted = await isPrConflicted(prNo);
 
-    // TODO: Is that correct? Should we check getBranchStatus like gitlab?
+    // TODO: Is that correct? Should we check getBranchStatus like gitlab? (#9618)
     res.canMerge = !res.isConflicted;
   }
   res.hasReviewers = is.nonEmptyArray(pr.reviewers);
@@ -390,7 +392,7 @@ export async function setBranchStatus({
   const sha = await getBranchCommit(branchName);
 
   // TargetUrl can not be empty so default to bitbucket
-  const url = targetUrl || /* istanbul ignore next */ 'http://bitbucket.org';
+  const url = targetUrl || /* istanbul ignore next */ 'https://bitbucket.org';
 
   const body = {
     name: context,
@@ -460,7 +462,7 @@ async function closeIssue(issueNumber: number): Promise<void> {
   );
 }
 
-export function getPrBody(input: string): string {
+export function massageMarkdown(input: string): string {
   // Remove any HTML we use
   return smartTruncate(input, 50000)
     .replace(
@@ -479,7 +481,7 @@ export async function ensureIssue({
   body,
 }: EnsureIssueConfig): Promise<EnsureIssueResult | null> {
   logger.debug(`ensureIssue()`);
-  const description = getPrBody(sanitize(body));
+  const description = massageMarkdown(sanitize(body));
 
   /* istanbul ignore if */
   if (!config.has_issues) {
@@ -546,12 +548,10 @@ export async function ensureIssue({
   return null;
 }
 
-export /* istanbul ignore next */ async function getIssueList(): Promise<
-  Issue[]
-> {
+/* istanbul ignore next */
+export async function getIssueList(): Promise<Issue[]> {
   logger.debug(`getIssueList()`);
 
-  /* istanbul ignore if */
   if (!config.has_issues) {
     logger.debug('Issues are disabled - cannot getIssueList');
     return [];
@@ -568,9 +568,9 @@ export /* istanbul ignore next */ async function getIssueList(): Promise<
         await bitbucketHttp.getJson<{ values: Issue[] }>(
           `/2.0/repositories/${config.repository}/issues?q=${filter}`
         )
-      ).body.values || /* istanbul ignore next */ []
+      ).body.values || []
     );
-  } catch (err) /* istanbul ignore next */ {
+  } catch (err) {
     logger.warn({ err }, 'Error finding issues');
     return [];
   }
@@ -619,7 +619,8 @@ export async function addReviewers(
   );
 }
 
-export /* istanbul ignore next */ function deleteLabel(): never {
+/* istanbul ignore next */
+export function deleteLabel(): never {
   throw new Error('deleteLabel not implemented');
 }
 
@@ -690,7 +691,7 @@ export async function createPr({
   };
 
   try {
-    const prInfo = (
+    const prRes = (
       await bitbucketHttp.postJson<PrResponse>(
         `/2.0/repositories/${config.repository}/pullrequests`,
         {
@@ -698,11 +699,7 @@ export async function createPr({
         }
       )
     ).body;
-    // TODO: fix types
-    const pr: Pr = {
-      number: prInfo.id,
-      displayNumber: `Pull Request #${prInfo.id}`,
-    } as any;
+    const pr = utils.prInfo(prRes);
     // istanbul ignore if
     if (config.prList) {
       config.prList.push(pr);
@@ -752,19 +749,22 @@ export async function updatePr({
 
 export async function mergePr(
   prNo: number,
-  branchName: string
+  branchName: string,
+  mergeStrategy: MergeStrategy
 ): Promise<boolean> {
-  logger.debug(`mergePr(${prNo}, ${branchName})`);
+  logger.debug(`mergePr(${prNo}, ${branchName}, ${mergeStrategy})`);
+
+  // Bitbucket Cloud does not support a rebase-alike; https://jira.atlassian.com/browse/BCLOUD-16610
+  if (mergeStrategy === 'rebase') {
+    logger.warn('Bitbucket Cloud does not support a "rebase" strategy.');
+    return false;
+  }
 
   try {
     await bitbucketHttp.postJson(
       `/2.0/repositories/${config.repository}/pullrequests/${prNo}/merge`,
       {
-        body: {
-          close_source_branch: true,
-          merge_strategy: 'merge_commit',
-          message: 'auto merged',
-        },
+        body: mergeBodyTransformer(mergeStrategy),
       }
     );
     logger.debug('Automerging succeeded');

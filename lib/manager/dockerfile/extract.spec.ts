@@ -1,12 +1,10 @@
-import { readFileSync } from 'fs';
-import { extractPackageFile, getDep } from './extract';
+import { getName, loadFixture } from '../../../test/util';
+import { extractPackageFile, getDep, splitImageParts } from './extract';
 
-const d1 = readFileSync(
-  'lib/manager/dockerfile/__fixtures__/Dockerfile1',
-  'utf8'
-);
+const d1 = loadFixture('1.Dockerfile');
+const d2 = loadFixture('2.Dockerfile');
 
-describe('lib/manager/dockerfile/extract', () => {
+describe(getName(), () => {
   describe('extractPackageFile()', () => {
     it('handles no FROM', () => {
       const res = extractPackageFile('no from!');
@@ -41,13 +39,15 @@ describe('lib/manager/dockerfile/extract', () => {
       expect(res).toMatchSnapshot();
     });
     it('handles comments', () => {
-      const res = extractPackageFile('# some comment\n# another\n\nFROM node\n')
-        .deps;
+      const res = extractPackageFile(
+        '# some comment\n# another\n\nFROM node\n'
+      ).deps;
       expect(res).toMatchSnapshot();
     });
     it('handles custom hosts', () => {
-      const res = extractPackageFile('FROM registry2.something.info/node:8\n')
-        .deps;
+      const res = extractPackageFile(
+        'FROM registry2.something.info/node:8\n'
+      ).deps;
       expect(res).toMatchSnapshot();
     });
     it('handles custom hosts and suffix', () => {
@@ -61,15 +61,25 @@ describe('lib/manager/dockerfile/extract', () => {
         'FROM registry2.something.info:5005/node:8\n'
       ).deps;
       expect(res).toMatchSnapshot();
-      expect(res[0].depName).toEqual('registry2.something.info:5005/node');
+      expect(res[0].depName).toEqual('node');
       expect(res[0].currentValue).toEqual('8');
     });
+
+    it('handles registries with a path', () => {
+      const res = extractPackageFile(
+        'FROM registry.example.com/proxy-cache/library/node:12.19.1\n'
+      ).deps;
+      expect(res).toMatchSnapshot();
+      expect(res[0].depName).toEqual('node');
+      expect(res[0].currentValue).toEqual('12.19.1');
+    });
+
     it('handles custom hosts with port without tag', () => {
       const res = extractPackageFile(
         'FROM registry2.something.info:5005/node\n'
       ).deps;
       expect(res).toMatchSnapshot();
-      expect(res[0].depName).toEqual('registry2.something.info:5005/node');
+      expect(res[0].depName).toEqual('node');
     });
     it('handles namespaced images', () => {
       const res = extractPackageFile('FROM mynamespace/node:8\n').deps;
@@ -142,6 +152,11 @@ describe('lib/manager/dockerfile/extract', () => {
       expect(res).toMatchSnapshot();
       expect(res).toHaveLength(2);
     });
+    it('extracts images from all sorts of (maybe multiline) FROM and COPY --from statements', () => {
+      const res = extractPackageFile(d2).deps;
+      expect(res).toMatchSnapshot();
+      expect(res).toHaveLength(9);
+    });
     it('handles calico/node', () => {
       const res = extractPackageFile('FROM calico/node\n').deps;
       expect(res).toMatchSnapshot();
@@ -154,6 +169,30 @@ describe('lib/manager/dockerfile/extract', () => {
   describe('getDep()', () => {
     it('rejects null', () => {
       expect(getDep(null)).toMatchSnapshot();
+    });
+  });
+  describe('splitImageParts()', () => {
+    it('handles docker hub', () => {
+      expect(splitImageParts('node:14')).toMatchInlineSnapshot(`
+        Object {
+          "currentDigest": undefined,
+          "currentValue": "14",
+          "depName": "node",
+        }
+      `);
+    });
+
+    it('handles docker hub with full host', () => {
+      expect(splitImageParts('docker.io/node:14')).toMatchInlineSnapshot(`
+        Object {
+          "currentDigest": undefined,
+          "currentValue": "14",
+          "depName": "node",
+          "registryUrls": Array [
+            "https://docker.io",
+          ],
+        }
+      `);
     });
   });
 });

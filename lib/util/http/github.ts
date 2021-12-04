@@ -25,6 +25,7 @@ interface GithubInternalOptions extends InternalHttpOptions {
 
 export interface GithubHttpOptions extends InternalHttpOptions {
   paginate?: boolean | string;
+  paginationField?: string;
   pageLimit?: number;
   token?: string;
 }
@@ -50,7 +51,8 @@ function handleGotError(
     err.name === 'RequestError' &&
     (err.code === 'ENOTFOUND' ||
       err.code === 'ETIMEDOUT' ||
-      err.code === 'EAI_AGAIN')
+      err.code === 'EAI_AGAIN' ||
+      err.code === 'ECONNRESET')
   ) {
     logger.debug({ err }, 'GitHub failure: RequestError');
     throw new ExternalHostError(err, PLATFORM_TYPE_GITHUB);
@@ -108,7 +110,14 @@ function handleGotError(
     ) {
       throw err;
     } else if (err.body?.errors?.find((e: any) => e.code === 'invalid')) {
+      logger.debug({ err }, 'Received invalid response - aborting');
       throw new Error(REPOSITORY_CHANGED);
+    } else if (
+      err.body?.errors?.find((e: any) =>
+        e.message?.startsWith('A pull request already exists')
+      )
+    ) {
+      throw err;
     }
     logger.debug({ err }, '422 Error thrown from GitHub');
     throw new ExternalHostError(err, PLATFORM_TYPE_GITHUB);
@@ -122,10 +131,12 @@ function handleGotError(
 }
 
 interface GraphqlOptions {
+  variables?: Record<string, string | number | null>;
   paginate?: boolean;
   count?: number;
+  limit?: number;
+  cursor?: string;
   acceptHeader?: string;
-  fromEnd?: boolean;
 }
 
 function constructAcceptString(input?: any): string {
@@ -199,9 +210,19 @@ export class GithubHttp extends Http<GithubHttpOptions, GithubHttpOptions> {
               }
             );
             const pages = await pAll(queue, { concurrency: 5 });
-            result.body = result.body.concat(
-              ...pages.filter(Boolean).map((page) => page.body)
-            );
+            if (opts.paginationField) {
+              result.body[opts.paginationField] = result.body[
+                opts.paginationField
+              ].concat(
+                ...pages
+                  .filter(Boolean)
+                  .map((page) => page.body[opts.paginationField])
+              );
+            } else {
+              result.body = result.body.concat(
+                ...pages.filter(Boolean).map((page) => page.body)
+              );
+            }
           }
         }
       }
@@ -220,9 +241,20 @@ export class GithubHttp extends Http<GithubHttpOptions, GithubHttpOptions> {
 
     const path = 'graphql';
 
+    const { paginate, count = 100, cursor = null } = options;
+    let { variables } = options;
+    if (paginate) {
+      variables = {
+        ...variables,
+        count,
+        cursor,
+      };
+    }
+    const body = variables ? { query, variables } : { query };
+
     const opts: HttpPostOptions = {
       baseUrl: baseUrl.replace('/v3/', '/'), // GHE uses unversioned graphql path
-      body: { query },
+      body,
       headers: { accept: options?.acceptHeader },
     };
 
@@ -234,40 +266,56 @@ export class GithubHttp extends Http<GithubHttpOptions, GithubHttpOptions> {
         opts
       );
       result = res?.body?.data?.repository;
-    } catch (gotErr) {
-      handleGotError(gotErr, path, opts);
+    } catch (err) {
+      if (err instanceof ExternalHostError) {
+        const gotError = err.err as GotLegacyError;
+        const statusCode = gotError?.statusCode;
+        if (
+          count &&
+          count > 10 &&
+          statusCode &&
+          statusCode >= 500 &&
+          statusCode < 600
+        ) {
+          logger.info('Reducing pagination count to workaround graphql 5xx');
+          return null;
+        }
+      }
+      handleGotError(err, path, opts);
     }
     return result;
   }
 
   async queryRepoField<T = Record<string, unknown>>(
-    queryOrig: string,
+    query: string,
     fieldName: string,
     options: GraphqlOptions = {}
   ): Promise<T[]> {
     const result: T[] = [];
 
-    const regex = new RegExp(`(\\W)${fieldName}(\\s*)\\(`);
-
     const { paginate = true } = options;
     let count = options.count || 100;
+    let limit = options.limit || 1000;
     let cursor: string = null;
 
     let isIterating = true;
     while (isIterating) {
-      let query = queryOrig;
-      if (paginate) {
-        let replacement = `$1${fieldName}$2(first: ${count}`;
-        replacement += cursor ? `, after: "${cursor}", ` : ', ';
-        query = query.replace(regex, replacement);
-      }
-      const gqlRes = await this.queryRepo<T>(query, options);
+      const gqlRes = await this.queryRepo<T>(query, {
+        ...options,
+        count: Math.min(count, limit),
+        cursor,
+        paginate,
+      });
       if (gqlRes?.[fieldName]) {
         const { nodes = [], edges = [], pageInfo } = gqlRes[fieldName];
         result.push(...nodes);
         result.push(...edges);
 
-        if (paginate && pageInfo) {
+        limit = Math.max(0, limit - nodes.length - edges.length);
+
+        if (limit === 0) {
+          isIterating = false;
+        } else if (paginate && pageInfo) {
           const { hasNextPage, endCursor } = pageInfo;
           if (hasNextPage && endCursor) {
             cursor = endCursor;

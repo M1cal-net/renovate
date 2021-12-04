@@ -12,7 +12,7 @@ This includes libraries and plugins.
 
 Renovate detects versions that are specified in a string `'group:artifact:version'` and those specified in a map `(group:groupName, name:ArtifactName, version:Version)`.
 
-### File Support
+### Gradle File Support
 
 Renovate can update `build.gradle`/`build.gradle.kts` files in the root of the repository.
 It also updates any `*.gradle`/`*.gradle.kts` files in a subdirectory as multi-project configurations.
@@ -32,37 +32,24 @@ Once the Gradle plugin has detected the dependencies, lookups and updating will 
 
 Renovate can update dependency versions found in Maven `pom.xml` files.
 
-### File Support
+### Maven File Support
 
 Renovate will search repositories for all `pom.xml` files and processes them independently.
 
 ### Custom registry support, and authentication
 
-Here is an example configuration to work with custom Artifactory servers using authentication:
+This example shows how you can use a `config.js` file to configure Renovate for use with Artifactory.
+We're using environment variables to pass the Artifactory username and password to Renovate bot.
 
-```json
-{
-  "hostRules": [
+```js
+module.exports = {
+  hostRules: [
     {
-      "hostType": "maven",
-      "baseUrl": "https://artifactoryurl1/",
-      "username": "artifactoryusername",
-      "password": "artifactorypassword"
+      hostType: 'maven',
+      matchHost: 'https://artifactory.yourcompany.com/',
+      username: process.env.ARTIFACTORY_USERNAME,
+      password: process.env.ARTIFACTORY_PASSWORD,
     },
-    {
-      "hostType": "maven",
-      "baseUrl": "https://artifactoryurl2/",
-      "username": "artifactoryusername",
-      "password": "artifactorypassword"
-    }
   ],
-  "packageRules": [
-    {
-      "managers": ["maven"],
-      "registryUrls": ["https://artifactoryurl1/", "https://artifactoryurl2/"]
-    }
-  ]
-}
+};
 ```
-
-In the above config, the custom registry URLs are defined using a package rule, and the username/passwords are set using a host rule each.

@@ -1,8 +1,8 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
-exports[`datasource/rubygems getReleases returns a dep for rubygems.org package hit 1`] = `
+exports[`datasource/rubygems/index getReleases returns a dep for rubygems.org package hit 1`] = `
 Object {
-  "name": "1pass",
+  "registryUrl": "https://rubygems.org",
   "releases": Array [
     Object {
       "version": "0.1.0",
@@ -14,14 +14,14 @@ Object {
 }
 `;
 
-exports[`datasource/rubygems getReleases returns a dep for rubygems.org package hit 2`] = `
+exports[`datasource/rubygems/index getReleases returns a dep for rubygems.org package hit 2`] = `
 Array [
   Object {
     "headers": Object {
       "accept-encoding": "identity",
       "host": "rubygems.org",
       "range": "bytes=0-",
-      "user-agent": "https://github.com/renovatebot/renovate",
+      "user-agent": "RenovateBot/0.0.0-semantic-release (https://github.com/renovatebot/renovate)",
     },
     "method": "GET",
     "url": "https://rubygems.org/versions",
@@ -29,15 +29,15 @@ Array [
 ]
 `;
 
-exports[`datasource/rubygems getReleases returns null for missing pkg 1`] = `
+exports[`datasource/rubygems/index getReleases returns null for missing pkg 1`] = `
 Array [
   Object {
     "headers": Object {
       "accept": "application/json",
-      "accept-encoding": "gzip, deflate",
+      "accept-encoding": "gzip, deflate, br",
       "host": "thirdparty.com",
       "hosttype": "rubygems",
-      "user-agent": "https://github.com/renovatebot/renovate",
+      "user-agent": "RenovateBot/0.0.0-semantic-release (https://github.com/renovatebot/renovate)",
     },
     "method": "GET",
     "url": "https://thirdparty.com/api/v1/gems/rails.json",
@@ -45,10 +45,10 @@ Array [
   Object {
     "headers": Object {
       "accept": "application/json",
-      "accept-encoding": "gzip, deflate",
+      "accept-encoding": "gzip, deflate, br",
       "host": "firstparty.com",
       "hosttype": "rubygems",
-      "user-agent": "https://github.com/renovatebot/renovate",
+      "user-agent": "RenovateBot/0.0.0-semantic-release (https://github.com/renovatebot/renovate)",
     },
     "method": "GET",
     "url": "https://firstparty.com/basepath/api/v1/gems/rails.json",
@@ -56,14 +56,14 @@ Array [
 ]
 `;
 
-exports[`datasource/rubygems getReleases returns null for rubygems.org package miss 1`] = `
+exports[`datasource/rubygems/index getReleases returns null for rubygems.org package miss 1`] = `
 Array [
   Object {
     "headers": Object {
       "accept-encoding": "identity",
       "host": "rubygems.org",
       "range": "bytes=0-",
-      "user-agent": "https://github.com/renovatebot/renovate",
+      "user-agent": "RenovateBot/0.0.0-semantic-release (https://github.com/renovatebot/renovate)",
     },
     "method": "GET",
     "url": "https://rubygems.org/versions",
@@ -71,15 +71,15 @@ Array [
 ]
 `;
 
-exports[`datasource/rubygems getReleases returns null if mismatched name 1`] = `
+exports[`datasource/rubygems/index getReleases returns null if mismatched name 1`] = `
 Array [
   Object {
     "headers": Object {
       "accept": "application/json",
-      "accept-encoding": "gzip, deflate",
+      "accept-encoding": "gzip, deflate, br",
       "host": "thirdparty.com",
       "hosttype": "rubygems",
-      "user-agent": "https://github.com/renovatebot/renovate",
+      "user-agent": "RenovateBot/0.0.0-semantic-release (https://github.com/renovatebot/renovate)",
     },
     "method": "GET",
     "url": "https://thirdparty.com/api/v1/gems/rails.json",
@@ -87,10 +87,10 @@ Array [
   Object {
     "headers": Object {
       "accept": "application/json",
-      "accept-encoding": "gzip, deflate",
+      "accept-encoding": "gzip, deflate, br",
       "host": "firstparty.com",
       "hosttype": "rubygems",
-      "user-agent": "https://github.com/renovatebot/renovate",
+      "user-agent": "RenovateBot/0.0.0-semantic-release (https://github.com/renovatebot/renovate)",
     },
     "method": "GET",
     "url": "https://firstparty.com/basepath/api/v1/gems/rails.json",
@@ -98,9 +98,10 @@ Array [
 ]
 `;
 
-exports[`datasource/rubygems getReleases uses multiple source urls 1`] = `
+exports[`datasource/rubygems/index getReleases uses multiple source urls 1`] = `
 Object {
   "homepage": "http://rubyonrails.org",
+  "registryUrl": "https://firstparty.com/basepath/",
   "releases": Array [
     Object {
       "releaseTimestamp": "2009-07-25T18:01:56.000Z",
@@ -2480,15 +2481,15 @@ Object {
 }
 `;
 
-exports[`datasource/rubygems getReleases uses multiple source urls 2`] = `
+exports[`datasource/rubygems/index getReleases uses multiple source urls 2`] = `
 Array [
   Object {
     "headers": Object {
       "accept": "application/json",
-      "accept-encoding": "gzip, deflate",
+      "accept-encoding": "gzip, deflate, br",
       "host": "thirdparty.com",
       "hosttype": "rubygems",
-      "user-agent": "https://github.com/renovatebot/renovate",
+      "user-agent": "RenovateBot/0.0.0-semantic-release (https://github.com/renovatebot/renovate)",
     },
     "method": "GET",
     "url": "https://thirdparty.com/api/v1/gems/rails.json",
@@ -2496,10 +2497,10 @@ Array [
   Object {
     "headers": Object {
       "accept": "application/json",
-      "accept-encoding": "gzip, deflate",
+      "accept-encoding": "gzip, deflate, br",
       "host": "firstparty.com",
       "hosttype": "rubygems",
-      "user-agent": "https://github.com/renovatebot/renovate",
+      "user-agent": "RenovateBot/0.0.0-semantic-release (https://github.com/renovatebot/renovate)",
     },
     "method": "GET",
     "url": "https://firstparty.com/basepath/api/v1/gems/rails.json",
@@ -2507,10 +2508,10 @@ Array [
   Object {
     "headers": Object {
       "accept": "application/json",
-      "accept-encoding": "gzip, deflate",
+      "accept-encoding": "gzip, deflate, br",
       "host": "firstparty.com",
       "hosttype": "rubygems",
-      "user-agent": "https://github.com/renovatebot/renovate",
+      "user-agent": "RenovateBot/0.0.0-semantic-release (https://github.com/renovatebot/renovate)",
     },
     "method": "GET",
     "url": "https://firstparty.com/basepath/api/v1/versions/rails.json",
@@ -2518,9 +2519,9 @@ Array [
 ]
 `;
 
-exports[`datasource/rubygems getReleases uses rubygems.org if no registry urls were provided 1`] = `
+exports[`datasource/rubygems/index getReleases uses rubygems.org if no registry urls were provided 1`] = `
 Object {
-  "name": "1pass",
+  "registryUrl": "https://rubygems.org",
   "releases": Array [
     Object {
       "version": "0.1.0",
@@ -2532,14 +2533,14 @@ Object {
 }
 `;
 
-exports[`datasource/rubygems getReleases uses rubygems.org if no registry urls were provided 2`] = `
+exports[`datasource/rubygems/index getReleases uses rubygems.org if no registry urls were provided 2`] = `
 Array [
   Object {
     "headers": Object {
       "accept-encoding": "identity",
       "host": "rubygems.org",
       "range": "bytes=0-",
-      "user-agent": "https://github.com/renovatebot/renovate",
+      "user-agent": "RenovateBot/0.0.0-semantic-release (https://github.com/renovatebot/renovate)",
     },
     "method": "GET",
     "url": "https://rubygems.org/versions",
@@ -2547,9 +2548,10 @@ Array [
 ]
 `;
 
-exports[`datasource/rubygems getReleases works with real data 1`] = `
+exports[`datasource/rubygems/index getReleases works with real data 1`] = `
 Object {
   "homepage": "http://rubyonrails.org",
+  "registryUrl": "https://thirdparty.com",
   "releases": Array [
     Object {
       "releaseTimestamp": "2009-07-25T18:01:56.000Z",
@@ -4929,15 +4931,15 @@ Object {
 }
 `;
 
-exports[`datasource/rubygems getReleases works with real data 2`] = `
+exports[`datasource/rubygems/index getReleases works with real data 2`] = `
 Array [
   Object {
     "headers": Object {
       "accept": "application/json",
-      "accept-encoding": "gzip, deflate",
+      "accept-encoding": "gzip, deflate, br",
       "host": "thirdparty.com",
       "hosttype": "rubygems",
-      "user-agent": "https://github.com/renovatebot/renovate",
+      "user-agent": "RenovateBot/0.0.0-semantic-release (https://github.com/renovatebot/renovate)",
     },
     "method": "GET",
     "url": "https://thirdparty.com/api/v1/gems/rails.json",
@@ -4945,10 +4947,10 @@ Array [
   Object {
     "headers": Object {
       "accept": "application/json",
-      "accept-encoding": "gzip, deflate",
+      "accept-encoding": "gzip, deflate, br",
       "host": "thirdparty.com",
       "hosttype": "rubygems",
-      "user-agent": "https://github.com/renovatebot/renovate",
+      "user-agent": "RenovateBot/0.0.0-semantic-release (https://github.com/renovatebot/renovate)",
     },
     "method": "GET",
     "url": "https://thirdparty.com/api/v1/versions/rails.json",

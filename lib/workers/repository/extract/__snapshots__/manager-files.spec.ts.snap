@@ -14,10 +14,11 @@ Array [
         "prettyDepType": "dependency",
       },
     ],
-    "ignoreNpmrcFile": undefined,
     "lernaClient": undefined,
-    "lernaDir": undefined,
     "lernaPackages": undefined,
+    "managerData": Object {
+      "lernaJsonFile": undefined,
+    },
     "npmLock": undefined,
     "npmrc": undefined,
     "packageFile": "package.json",
@@ -28,7 +29,6 @@ Array [
     "skipInstalls": undefined,
     "yarnLock": undefined,
     "yarnWorkspacesPackages": undefined,
-    "yarnrc": undefined,
   },
 ]
 `;
@@ -45,7 +45,6 @@ Array [
         "replaceString": "abc",
       },
     ],
-    "manager": "html",
     "packageFile": "Dockerfile",
   },
 ]

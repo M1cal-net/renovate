@@ -5,6 +5,7 @@ import { XmlDocument } from 'xmldoc';
 import * as datasourceNuget from '../../datasource/nuget';
 import { logger } from '../../logger';
 import { readFile } from '../../util/fs';
+import type { Registry } from './types';
 
 async function readFileAsXmlDocument(file: string): Promise<XmlDocument> {
   try {
@@ -13,11 +14,6 @@ async function readFileAsXmlDocument(file: string): Promise<XmlDocument> {
     logger.debug({ err }, `failed to parse '${file}' as XML document`);
     return undefined;
   }
-}
-
-export interface Registry {
-  readonly url: string;
-  readonly name?: string;
 }
 
 /* istanbul ignore next */
@@ -41,15 +37,15 @@ export async function getConfiguredRegistries(
   // Valid file names taken from https://github.com/NuGet/NuGet.Client/blob/f64621487c0b454eda4b98af853bf4a528bef72a/src/NuGet.Core/NuGet.Configuration/Settings/Settings.cs#L34
   const nuGetConfigFileNames = ['nuget.config', 'NuGet.config', 'NuGet.Config'];
   // normalize paths, otherwise startsWith can fail because of path delimitter mismatch
-  const baseDir = upath.normalizeSafe(localDir);
+  const normalizedLocalDir = upath.normalizeSafe(localDir);
   const nuGetConfigPath = await findUp(nuGetConfigFileNames, {
-    cwd: upath.dirname(upath.join(baseDir, packageFile)),
+    cwd: upath.dirname(upath.join(normalizedLocalDir, packageFile)),
     type: 'file',
   });
 
   if (
     !nuGetConfigPath ||
-    upath.normalizeSafe(nuGetConfigPath).startsWith(baseDir) !== true
+    upath.normalizeSafe(nuGetConfigPath).startsWith(normalizedLocalDir) !== true
   ) {
     return undefined;
   }

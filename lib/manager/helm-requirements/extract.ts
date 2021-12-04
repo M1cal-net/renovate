@@ -1,40 +1,20 @@
 import is from '@sindresorhus/is';
-import yaml from 'js-yaml';
-import * as datasourceHelm from '../../datasource/helm';
+import { load } from 'js-yaml';
+import { HelmDatasource } from '../../datasource/helm';
 import { logger } from '../../logger';
 import { SkipReason } from '../../types';
-import { getSiblingFileName, readLocalFile } from '../../util/fs';
-import { ExtractConfig, PackageDependency, PackageFile } from '../common';
+import type { ExtractConfig, PackageDependency, PackageFile } from '../types';
 
-export async function extractPackageFile(
+export function extractPackageFile(
   content: string,
   fileName: string,
   config: ExtractConfig
-): Promise<PackageFile> {
-  try {
-    const chartFileName = getSiblingFileName(fileName, 'Chart.yaml');
-    const chartContents = await readLocalFile(chartFileName, 'utf8');
-    if (!chartContents) {
-      logger.debug({ fileName }, 'Failed to find helm Chart.yaml');
-      return null;
-    }
-    // TODO: fix me
-    const chart = yaml.safeLoad(chartContents, { json: true }) as any;
-    if (!(chart?.apiVersion && chart.name && chart.version)) {
-      logger.debug(
-        { fileName },
-        'Failed to find required fields in Chart.yaml'
-      );
-      return null;
-    }
-  } catch (err) {
-    logger.debug({ fileName }, 'Failed to parse helm Chart.yaml');
-    return null;
-  }
+): PackageFile {
   let deps = [];
-  let doc;
+  // TODO: fix type
+  let doc: any;
   try {
-    doc = yaml.safeLoad(content, { json: true });
+    doc = load(content, { json: true });
   } catch (err) {
     logger.debug({ fileName }, 'Failed to parse helm requirements.yaml');
     return null;
@@ -48,36 +28,50 @@ export async function extractPackageFile(
       depName: dep.name,
       currentValue: dep.version,
     };
-    if (dep.repository) {
-      res.registryUrls = [dep.repository];
-      if (dep.repository.startsWith('@')) {
-        const repoWithAtRemoved = dep.repository.slice(1);
-        const alias = config.aliases[repoWithAtRemoved];
-        if (alias) {
-          res.registryUrls = [alias];
-          return res;
-        }
 
-        res.skipReason = SkipReason.PlaceholderUrl;
-      } else {
-        try {
-          const url = new URL(dep.repository);
-          if (url.protocol === 'file:') {
-            res.skipReason = SkipReason.LocalDependency;
-          }
-        } catch (err) {
-          logger.debug({ err }, 'Error parsing url');
-          res.skipReason = SkipReason.InvalidUrl;
-        }
-      }
-    } else {
+    if (!res.depName) {
+      res.skipReason = SkipReason.InvalidName;
+      return res;
+    }
+
+    if (!res.currentValue) {
+      res.skipReason = SkipReason.InvalidVersion;
+      return res;
+    }
+
+    if (!dep.repository) {
       res.skipReason = SkipReason.NoRepository;
+      return res;
+    }
+
+    res.registryUrls = [dep.repository];
+    if (dep.repository.startsWith('@') || dep.repository.startsWith('alias:')) {
+      const repoWithPrefixRemoved = dep.repository.slice(
+        dep.repository[0] === '@' ? 1 : 6
+      );
+      const alias = config.aliases[repoWithPrefixRemoved];
+      if (alias) {
+        res.registryUrls = [alias];
+        return res;
+      }
+
+      res.skipReason = SkipReason.PlaceholderUrl;
+    } else {
+      try {
+        const url = new URL(dep.repository);
+        if (url.protocol === 'file:') {
+          res.skipReason = SkipReason.LocalDependency;
+        }
+      } catch (err) {
+        logger.debug({ err }, 'Error parsing url');
+        res.skipReason = SkipReason.InvalidUrl;
+      }
     }
     return res;
   });
   const res = {
     deps,
-    datasource: datasourceHelm.id,
+    datasource: HelmDatasource.id,
   };
   return res;
 }

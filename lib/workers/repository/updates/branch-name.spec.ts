@@ -1,7 +1,8 @@
-import { RenovateConfig } from '../../../config/common';
+import { getName } from '../../../../test/util';
+import type { RenovateConfig } from '../../../config/types';
 import { generateBranchName } from './branch-name';
 
-describe('workers/repository/updates/branch-name', () => {
+describe(getName(), () => {
   describe('getBranchName()', () => {
     it('uses groupName if no slug defined', () => {
       const upgrade: RenovateConfig = {
@@ -66,6 +67,7 @@ describe('workers/repository/updates/branch-name', () => {
         groupSlug: 'some group slug',
         updateType: 'patch',
         separateMajorMinor: true,
+        separateMinorPatch: true,
         newMajor: 2,
         group: {},
       };
@@ -84,6 +86,112 @@ describe('workers/repository/updates/branch-name', () => {
       generateBranchName(upgrade);
       expect(upgrade.branchName).toEqual('dep');
     });
+    it('separates patches when separateMinorPatch=true', () => {
+      const upgrade: RenovateConfig = {
+        branchName:
+          '{{{branchPrefix}}}{{{additionalBranchPrefix}}}{{{branchTopic}}}',
+        branchPrefix: 'renovate/',
+        additionalBranchPrefix: '',
+        depNameSanitized: 'lodash',
+        newMajor: 4,
+        separateMinorPatch: true,
+        isPatch: true,
+        newMinor: 17,
+        branchTopic:
+          '{{{depNameSanitized}}}-{{{newMajor}}}{{#if separateMinorPatch}}{{#if isPatch}}.{{{newMinor}}}{{/if}}{{/if}}.x{{#if isLockfileUpdate}}-lockfile{{/if}}',
+        depName: 'dep',
+        group: {},
+      };
+      generateBranchName(upgrade);
+      expect(upgrade.branchName).toEqual('renovate/lodash-4.17.x');
+    });
+    it('does not separate patches when separateMinorPatch=false', () => {
+      const upgrade: RenovateConfig = {
+        branchName:
+          '{{{branchPrefix}}}{{{additionalBranchPrefix}}}{{{branchTopic}}}',
+        branchPrefix: 'renovate/',
+        additionalBranchPrefix: '',
+        depNameSanitized: 'lodash',
+        newMajor: 4,
+        separateMinorPatch: false,
+        isPatch: true,
+        newMinor: 17,
+        branchTopic:
+          '{{{depNameSanitized}}}-{{{newMajor}}}{{#if separateMinorPatch}}{{#if isPatch}}.{{{newMinor}}}{{/if}}{{/if}}.x{{#if isLockfileUpdate}}-lockfile{{/if}}',
+        depName: 'dep',
+        group: {},
+      };
+      generateBranchName(upgrade);
+      expect(upgrade.branchName).toEqual('renovate/lodash-4.x');
+    });
+
+    it('realistic defaults', () => {
+      const upgrade: RenovateConfig = {
+        branchName:
+          '{{{branchPrefix}}}{{{additionalBranchPrefix}}}{{{branchTopic}}}',
+        branchTopic:
+          '{{{depNameSanitized}}}-{{{newMajor}}}{{#if isPatch}}.{{{newMinor}}}{{/if}}.x{{#if isLockfileUpdate}}-lockfile{{/if}}',
+        branchPrefix: 'renovate/',
+        depNameSanitized: 'jest',
+        newMajor: '42',
+        group: {},
+      };
+      generateBranchName(upgrade);
+      expect(upgrade.branchName).toEqual('renovate/jest-42.x');
+    });
+
+    it('hashedBranchLength hashing', () => {
+      const upgrade: RenovateConfig = {
+        branchName:
+          '{{{branchPrefix}}}{{{additionalBranchPrefix}}}{{{branchTopic}}}',
+        branchTopic:
+          '{{{depNameSanitized}}}-{{{newMajor}}}{{#if isPatch}}.{{{newMinor}}}{{/if}}.x{{#if isLockfileUpdate}}-lockfile{{/if}}',
+        hashedBranchLength: 14,
+        branchPrefix: 'dep-',
+        depNameSanitized: 'jest',
+        newMajor: '42',
+        group: {},
+      };
+      generateBranchName(upgrade);
+      expect(upgrade.branchName).toEqual('dep-df9ca0f348');
+    });
+
+    it('hashedBranchLength hashing with group name', () => {
+      const upgrade: RenovateConfig = {
+        hashedBranchLength: 20,
+        branchPrefix: 'dep-',
+        depNameSanitized: 'jest',
+        newMajor: '42',
+        groupName: 'some group name',
+        group: {
+          branchName:
+            '{{{branchPrefix}}}{{{additionalBranchPrefix}}}{{{branchTopic}}}',
+          branchTopic:
+            '{{{depNameSanitized}}}-{{{newMajor}}}{{#if isPatch}}.{{{newMinor}}}{{/if}}.x{{#if isLockfileUpdate}}-lockfile{{/if}}',
+        },
+      };
+      generateBranchName(upgrade);
+      expect(upgrade.branchName).toEqual('dep-df9ca0f34833f3e0');
+    });
+
+    it('hashedBranchLength too short', () => {
+      const upgrade: RenovateConfig = {
+        hashedBranchLength: 3,
+        branchPrefix: 'dep-',
+        depNameSanitized: 'jest',
+        newMajor: '42',
+        groupName: 'some group name',
+        group: {
+          branchName:
+            '{{{branchPrefix}}}{{{additionalBranchPrefix}}}{{{branchTopic}}}',
+          branchTopic:
+            '{{{depNameSanitized}}}-{{{newMajor}}}{{#if isPatch}}.{{{newMinor}}}{{/if}}.x{{#if isLockfileUpdate}}-lockfile{{/if}}',
+        },
+      };
+      generateBranchName(upgrade);
+      expect(upgrade.branchName).toEqual('dep-df9ca0');
+    });
+
     it('enforces valid git branch name', () => {
       const fixtures = [
         {

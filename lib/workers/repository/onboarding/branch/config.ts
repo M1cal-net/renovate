@@ -1,12 +1,15 @@
-import { RenovateConfig } from '../../../../config';
-import { getPreset } from '../../../../config/presets';
+import { getPreset } from '../../../../config/presets/local';
 import { PRESET_DEP_NOT_FOUND } from '../../../../config/presets/util';
+import type {
+  RenovateConfig,
+  RenovateSharedConfig,
+} from '../../../../config/types';
 import { logger } from '../../../../logger';
 import { clone } from '../../../../util/clone';
 
-export async function getOnboardingConfig(
+async function getOnboardingConfig(
   config: RenovateConfig
-): Promise<string> {
+): Promise<RenovateSharedConfig> {
   let onboardingConfig = clone(config.onboardingConfig);
 
   let orgPreset: string;
@@ -19,11 +22,14 @@ export async function getOnboardingConfig(
 
   // Check for org/renovate-config
   try {
-    const orgRenovateConfig = `local>${orgName}/renovate-config`;
-    await getPreset(orgRenovateConfig, config);
-    orgPreset = orgRenovateConfig;
+    const packageName = `${orgName}/renovate-config`;
+    await getPreset({ packageName, baseConfig: config });
+    orgPreset = `local>${packageName}`;
   } catch (err) {
-    if (err.message !== PRESET_DEP_NOT_FOUND) {
+    if (
+      err.message !== PRESET_DEP_NOT_FOUND &&
+      !err.message.startsWith('Unsupported platform')
+    ) {
       logger.warn({ err }, 'Unknown error fetching default owner preset');
     }
   }
@@ -31,11 +37,19 @@ export async function getOnboardingConfig(
   if (!orgPreset) {
     // Check for org/.{{platform}}
     try {
-      const orgDotPlatformConfig = `local>${orgName}/.${config.platform}:renovate-config`;
-      await getPreset(orgDotPlatformConfig, config);
-      orgPreset = orgDotPlatformConfig;
+      const packageName = `${orgName}/.${config.platform}`;
+      const presetName = 'renovate-config';
+      await getPreset({
+        packageName,
+        presetName,
+        baseConfig: config,
+      });
+      orgPreset = `local>${packageName}:${presetName}`;
     } catch (err) {
-      if (err.message !== PRESET_DEP_NOT_FOUND) {
+      if (
+        err.message !== PRESET_DEP_NOT_FOUND &&
+        !err.message.startsWith('Unsupported platform')
+      ) {
         logger.warn({ err }, 'Unknown error fetching default owner preset');
       }
     }
@@ -54,5 +68,14 @@ export async function getOnboardingConfig(
   }
 
   logger.debug({ config: onboardingConfig }, 'onboarding config');
+  return onboardingConfig;
+}
+
+async function getOnboardingConfigContents(
+  config: RenovateConfig
+): Promise<string> {
+  const onboardingConfig = await getOnboardingConfig(config);
   return JSON.stringify(onboardingConfig, null, 2) + '\n';
 }
+
+export { getOnboardingConfig, getOnboardingConfigContents };

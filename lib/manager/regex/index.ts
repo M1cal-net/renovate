@@ -1,13 +1,13 @@
-import url from 'url';
+import { URL } from 'url';
 import { logger } from '../../logger';
 import { regEx } from '../../util/regex';
 import * as template from '../../util/template';
-import {
+import type {
   CustomExtractConfig,
   PackageDependency,
   PackageFile,
   Result,
-} from '../common';
+} from '../types';
 
 export const defaultConfig = {
   pinDigests: false,
@@ -23,6 +23,8 @@ const validMatchFields = [
   'extractVersion',
   'registryUrl',
 ];
+
+const mergeFields = ['registryUrls', ...validMatchFields];
 
 function regexMatchAll(regex: RegExp, content: string): RegExpMatchArray[] {
   const matches: RegExpMatchArray[] = [];
@@ -43,11 +45,30 @@ function createDependency(
 ): PackageDependency {
   const dependency = dep || {};
   const { groups } = matchResult;
+
+  function updateDependency(field: string, value: string): void {
+    switch (field) {
+      case 'registryUrl':
+        // check if URL is valid and pack inside an array
+        try {
+          const url = new URL(value).toString();
+          dependency.registryUrls = [url];
+        } catch (err) {
+          logger.warn({ value }, 'Invalid regex manager registryUrl');
+        }
+        break;
+      default:
+        dependency[field] = value;
+        break;
+    }
+  }
+
   for (const field of validMatchFields) {
     const fieldTemplate = `${field}Template`;
     if (config[fieldTemplate]) {
       try {
-        dependency[field] = template.compile(config[fieldTemplate], groups);
+        const compiled = template.compile(config[fieldTemplate], groups, false);
+        updateDependency(field, compiled);
       } catch (err) {
         logger.warn(
           { template: config[fieldTemplate] },
@@ -56,17 +77,7 @@ function createDependency(
         return null;
       }
     } else if (groups[field]) {
-      switch (field) {
-        case 'registryUrl':
-          // check if URL is valid and pack inside an array
-          if (url.parse(groups[field])) {
-            dependency.registryUrls = [groups[field]];
-          }
-          break;
-        default:
-          dependency[field] = groups[field];
-          break;
-      }
+      updateDependency(field, groups[field]);
     }
   }
   dependency.replaceString = String(matchResult[0]);
@@ -76,7 +87,7 @@ function createDependency(
 function mergeDependency(deps: PackageDependency[]): PackageDependency {
   const result: PackageDependency = {};
   deps.forEach((dep) => {
-    validMatchFields.forEach((field) => {
+    mergeFields.forEach((field) => {
       if (dep[field]) {
         result[field] = dep[field];
         // save the line replaceString of the section which contains the current Value for a speed up lookup during the replace phase
@@ -139,7 +150,7 @@ export function extractPackageFile(
   packageFile: string,
   config: CustomExtractConfig
 ): Result<PackageFile | null> {
-  let deps;
+  let deps: PackageDependency[];
   switch (config.matchStringsStrategy) {
     default:
     case 'any':
@@ -156,17 +167,17 @@ export function extractPackageFile(
   // filter all null values
   deps = deps.filter(Boolean);
   if (deps.length) {
+    const res: PackageFile = { deps, matchStrings: config.matchStrings };
     if (config.matchStringsStrategy) {
-      return {
-        deps,
-        matchStrings: config.matchStrings,
-        matchStringsStrategy: config.matchStringsStrategy,
-      };
+      res.matchStringsStrategy = config.matchStringsStrategy;
     }
-    return {
-      deps,
-      matchStrings: config.matchStrings,
-    };
+    // copy over templates for autoreplace
+    for (const field of validMatchFields.map((f) => `${f}Template`)) {
+      if (config[field]) {
+        res[field] = config[field];
+      }
+    }
+    return res;
   }
 
   return null;

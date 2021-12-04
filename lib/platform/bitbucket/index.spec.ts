@@ -1,10 +1,10 @@
-import nock from 'nock';
 import * as httpMock from '../../../test/http-mock';
+import { getName } from '../../../test/util';
 import { logger as _logger } from '../../logger';
 import { BranchStatus, PrState } from '../../types';
 import * as _git from '../../util/git';
 import { setBaseUrl } from '../../util/http/bitbucket';
-import { Platform, RepoParams } from '../common';
+import type { Platform, RepoParams } from '../types';
 
 const baseUrl = 'https://api.bitbucket.org';
 
@@ -34,7 +34,7 @@ lxml==3.6.0
 mccabe==0.6.1
 `;
 
-describe('platform/bitbucket', () => {
+describe(getName(), () => {
   let bitbucket: Platform;
   let hostRules: jest.Mocked<typeof import('../../util/host-rules')>;
   let git: jest.Mocked<typeof _git>;
@@ -42,8 +42,6 @@ describe('platform/bitbucket', () => {
   beforeEach(async () => {
     // reset module
     jest.resetModules();
-    httpMock.reset();
-    httpMock.setup();
     jest.mock('../../util/git');
     jest.mock('../../util/host-rules');
     jest.mock('../../logger');
@@ -66,8 +64,8 @@ describe('platform/bitbucket', () => {
   async function initRepoMock(
     config?: Partial<RepoParams>,
     repoResp?: any,
-    existingScope?: nock.Scope
-  ): Promise<nock.Scope> {
+    existingScope?: httpMock.Scope
+  ): Promise<httpMock.Scope> {
     const repository = config?.repository || 'some/repo';
 
     const scope = existingScope || httpMock.scope(baseUrl);
@@ -80,7 +78,6 @@ describe('platform/bitbucket', () => {
 
     await bitbucket.initRepo({
       repository: 'some/repo',
-      localDir: '',
       ...config,
     });
 
@@ -145,7 +142,6 @@ describe('platform/bitbucket', () => {
       expect(
         await bitbucket.initRepo({
           repository: 'some/repo',
-          localDir: '',
         })
       ).toMatchSnapshot();
       expect(httpMock.getTrace()).toMatchSnapshot();
@@ -546,6 +542,52 @@ describe('platform/bitbucket', () => {
     });
   });
 
+  describe('getIssueList()', () => {
+    it('has no issues', async () => {
+      await initRepoMock();
+      await bitbucket.getIssueList();
+      expect(httpMock.getTrace()).toMatchSnapshot();
+    });
+    it('get issues', async () => {
+      const scope = await initRepoMock({}, { has_issues: true });
+      scope
+        .get('/2.0/repositories/some/repo/issues')
+        .query({
+          q: '(state = "new" OR state = "open") AND reporter.username="abc"',
+        })
+        .reply(200, {
+          values: [
+            {
+              id: 25,
+              title: 'title',
+              content: { raw: 'content' },
+            },
+            {
+              id: 26,
+              title: 'title',
+              content: { raw: 'content' },
+            },
+          ],
+        });
+      const issues = await bitbucket.getIssueList();
+      expect(httpMock.getTrace()).toMatchSnapshot();
+      expect(issues).toHaveLength(2);
+      expect(issues).toMatchSnapshot();
+    });
+    it('does not throw', async () => {
+      const scope = await initRepoMock({}, { has_issues: true });
+      scope
+        .get('/2.0/repositories/some/repo/issues')
+        .query({
+          q: '(state = "new" OR state = "open") AND reporter.username="abc"',
+        })
+        .reply(500, {});
+      const issues = await bitbucket.getIssueList();
+      expect(httpMock.getTrace()).toMatchSnapshot();
+      expect(issues).toHaveLength(0);
+    });
+  });
+
   describe('addAssignees()', () => {
     it('does not throw', async () => {
       expect(await bitbucket.addAssignees(3, ['some'])).toMatchSnapshot();
@@ -598,17 +640,10 @@ describe('platform/bitbucket', () => {
       await initRepoMock(null, null, scope);
       scope
         .get(
-          '/2.0/repositories/some/repo/pullrequests?state=OPEN&state=MERGED&state=DECLINED&state=SUPERSEDED&pagelen=50'
+          '/2.0/repositories/some/repo/pullrequests?state=OPEN&state=MERGED&state=DECLINED&state=SUPERSEDED&q=author.uuid="12345"&pagelen=50'
         )
         .reply(200, {
           values: [
-            {
-              id: 2,
-              author: { uuid: 'abcde' },
-              source: { branch: { name: 'branch-a' } },
-              destination: { branch: { name: 'branch-a' } },
-              state: 'OPEN',
-            },
             {
               id: 1,
               author: { uuid: '12345' },
@@ -723,10 +758,10 @@ describe('platform/bitbucket', () => {
     });
   });
 
-  describe('getPrBody()', () => {
+  describe('massageMarkdown()', () => {
     it('returns diff files', () => {
       expect(
-        bitbucket.getPrBody(
+        bitbucket.massageMarkdown(
           '<details><summary>foo</summary>bar</details>text<details>'
         )
       ).toMatchSnapshot();
@@ -777,10 +812,43 @@ describe('platform/bitbucket', () => {
   });
 
   describe('mergePr()', () => {
-    it('posts Merge', async () => {
+    it('posts Merge with optional merge strategy', async () => {
       const scope = await initRepoMock();
       scope.post('/2.0/repositories/some/repo/pullrequests/5/merge').reply(200);
       await bitbucket.mergePr(5, 'branch');
+      expect(httpMock.getTrace()).toMatchSnapshot();
+    });
+
+    it('posts Merge with auto', async () => {
+      const scope = await initRepoMock();
+      scope.post('/2.0/repositories/some/repo/pullrequests/5/merge').reply(200);
+      await bitbucket.mergePr(5, 'branch', 'auto');
+      expect(httpMock.getTrace()).toMatchSnapshot();
+    });
+
+    it('posts Merge with merge-commit', async () => {
+      const scope = await initRepoMock();
+      scope.post('/2.0/repositories/some/repo/pullrequests/5/merge').reply(200);
+      await bitbucket.mergePr(5, 'branch', 'merge-commit');
+      expect(httpMock.getTrace()).toMatchSnapshot();
+    });
+
+    it('posts Merge with squash', async () => {
+      const scope = await initRepoMock();
+      scope.post('/2.0/repositories/some/repo/pullrequests/5/merge').reply(200);
+      await bitbucket.mergePr(5, 'branch', 'squash');
+      expect(httpMock.getTrace()).toMatchSnapshot();
+    });
+
+    it('does not post Merge with rebase', async () => {
+      await bitbucket.mergePr(5, 'branch', 'rebase');
+      expect(httpMock.getTrace()).toEqual([]);
+    });
+
+    it('posts Merge with fast-forward', async () => {
+      const scope = await initRepoMock();
+      scope.post('/2.0/repositories/some/repo/pullrequests/5/merge').reply(200);
+      await bitbucket.mergePr(5, 'branch', 'fast-forward');
       expect(httpMock.getTrace()).toMatchSnapshot();
     });
   });
@@ -796,19 +864,26 @@ describe('platform/bitbucket', () => {
       const data = { foo: 'bar' };
       const scope = await initRepoMock();
       scope
-        .get('/2.0/repositories/some/repo/src/master/file.json')
+        .get('/2.0/repositories/some/repo/src/HEAD/file.json')
         .reply(200, JSON.stringify(data));
       const res = await bitbucket.getJsonFile('file.json');
       expect(res).toEqual(data);
       expect(httpMock.getTrace()).toMatchSnapshot();
     });
-    it('returns null on errors', async () => {
+    it('throws on malformed JSON', async () => {
       const scope = await initRepoMock();
       scope
-        .get('/2.0/repositories/some/repo/src/master/file.json')
+        .get('/2.0/repositories/some/repo/src/HEAD/file.json')
+        .reply(200, '!@#');
+      await expect(bitbucket.getJsonFile('file.json')).rejects.toThrow();
+      expect(httpMock.getTrace()).toMatchSnapshot();
+    });
+    it('throws on errors', async () => {
+      const scope = await initRepoMock();
+      scope
+        .get('/2.0/repositories/some/repo/src/HEAD/file.json')
         .replyWithError('some error');
-      const res = await bitbucket.getJsonFile('file.json');
-      expect(res).toBeNull();
+      await expect(bitbucket.getJsonFile('file.json')).rejects.toThrow();
       expect(httpMock.getTrace()).toMatchSnapshot();
     });
   });

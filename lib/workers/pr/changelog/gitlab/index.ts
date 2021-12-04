@@ -1,9 +1,9 @@
 import changelogFilenameRegex from 'changelog-filename-regex';
 import { logger } from '../../../../logger';
-import { GitlabTreeNode } from '../../../../types/platform/gitlab';
+import type { GitlabTreeNode } from '../../../../types/platform/gitlab';
 import { GitlabHttp } from '../../../../util/http/gitlab';
 import { ensureTrailingSlash } from '../../../../util/url';
-import { ChangeLogFile, ChangeLogNotes } from '../common';
+import type { ChangeLogFile, ChangeLogNotes } from '../types';
 
 const http = new GitlabHttp();
 
@@ -44,7 +44,8 @@ export async function getTags(
 
 export async function getReleaseNotesMd(
   repository: string,
-  apiBaseUrl: string
+  apiBaseUrl: string,
+  sourceDirectory?: string
 ): Promise<ChangeLogFile> | null {
   logger.trace('gitlab.getReleaseNotesMd()');
   const repoid = getRepoId(repository);
@@ -53,15 +54,25 @@ export async function getReleaseNotesMd(
   )}projects/${repoid}/repository/`;
 
   // https://docs.gitlab.com/13.2/ee/api/repositories.html#list-repository-tree
-  let files = (
+  const tree = (
     await http.getJson<GitlabTreeNode[]>(`${apiPrefix}tree?per_page=100`, {
       paginate: true,
     })
   ).body;
-
-  files = files
-    .filter((f) => f.type === 'blob')
-    .filter((f) => changelogFilenameRegex.test(f.path));
+  const allFiles = tree.filter((f) => f.type === 'blob');
+  let files: GitlabTreeNode[] = [];
+  if (sourceDirectory?.length) {
+    files = allFiles
+      .filter((f) => f.path.startsWith(sourceDirectory))
+      .filter((f) =>
+        changelogFilenameRegex.test(
+          f.path.replace(ensureTrailingSlash(sourceDirectory), '')
+        )
+      );
+  }
+  if (!files.length) {
+    files = allFiles.filter((f) => changelogFilenameRegex.test(f.path));
+  }
   if (!files.length) {
     logger.trace('no changelog file found');
     return null;

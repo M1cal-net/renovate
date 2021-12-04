@@ -1,23 +1,14 @@
-import { readFileSync } from 'fs';
-import { resolve } from 'upath';
-import { getName } from '../../../test/util';
-import { CustomExtractConfig } from '../common';
+import { getName, loadFixture } from '../../../test/util';
+import { logger } from '../../logger';
+import type { CustomExtractConfig } from '../types';
 import { defaultConfig, extractPackageFile } from '.';
 
-const dockerfileContent = readFileSync(
-  resolve(__dirname, `./__fixtures__/Dockerfile`),
-  'utf8'
-);
-const ansibleYamlContent = readFileSync(
-  resolve(__dirname, `./__fixtures__/ansible.yml`),
-  'utf8'
-);
-const exampleJsonContent = readFileSync(
-  resolve(__dirname, `./__fixtures__/example.json`),
-  'utf8'
-);
+const dockerfileContent = loadFixture(`Dockerfile`);
+const ansibleYamlContent = loadFixture(`ansible.yml`);
+const exampleJsonContent = loadFixture(`example.json`);
+const exampleGitlabCiYml = loadFixture(`gitlab-ci.yml`);
 
-describe(getName(__filename), () => {
+describe(getName(), () => {
   it('has default config', () => {
     expect(defaultConfig).toEqual({
       pinDigests: false,
@@ -106,7 +97,7 @@ describe(getName(__filename), () => {
       spec:
         releaseName: prometheus-operator
         chart:
-          repository: https://kubernetes-charts.storage.googleapis.com/
+          repository: https://charts.helm.sh/stable
           name: prometheus-operator
           version: 8.12.13
       `,
@@ -114,6 +105,43 @@ describe(getName(__filename), () => {
       config
     );
     expect(res).toMatchSnapshot();
+  });
+  it('extracts and applies a registryUrlTemplate', async () => {
+    const config = {
+      matchStrings: [
+        'ENV GRADLE_VERSION=(?<currentValue>.*) # (?<datasource>.*?)/(?<depName>.*?)(\\&versioning=(?<versioning>.*?))?\\s',
+      ],
+      registryUrlTemplate: 'http://registry.{{depName}}.com/',
+    };
+    const res = await extractPackageFile(
+      dockerfileContent,
+      'Dockerfile',
+      config
+    );
+    expect(res).toMatchSnapshot();
+    expect(res.deps).toHaveLength(1);
+    expect(
+      res.deps.find((dep) => dep.depName === 'gradle').registryUrls
+    ).toEqual(['http://registry.gradle.com/']);
+  });
+  it('extracts and does not apply a registryUrlTemplate if the result is an invalid url', async () => {
+    jest.mock('../../logger');
+    const config = {
+      matchStrings: [
+        'ENV GRADLE_VERSION=(?<currentValue>.*) # (?<datasource>.*?)/(?<depName>.*?)(\\&versioning=(?<versioning>.*?))?\\s',
+      ],
+      registryUrlTemplate: 'this-is-not-a-valid-url-{{depName}}',
+    };
+    const res = await extractPackageFile(
+      dockerfileContent,
+      'Dockerfile',
+      config
+    );
+    expect(res).toMatchSnapshot();
+    expect(logger.warn).toHaveBeenCalledWith(
+      { value: 'this-is-not-a-valid-url-gradle' },
+      'Invalid regex manager registryUrl'
+    );
   });
   it('extracts multiple dependencies with multiple matchStrings', async () => {
     const config = {
@@ -167,6 +195,24 @@ describe(getName(__filename), () => {
     const res = await extractPackageFile(
       ansibleYamlContent,
       'ansible.yml',
+      config
+    );
+    expect(res).toMatchSnapshot();
+    expect(res.deps).toHaveLength(1);
+  });
+  it('extracts with combination strategy and registry url', async () => {
+    const config: CustomExtractConfig = {
+      matchStringsStrategy: 'combination',
+      matchStrings: [
+        'CHART_VERSION: (?<currentValue>.*?)\n',
+        'CHART_REPOSITORY_URL: "(?<registryUrl>.*?)"',
+        'CHART_NAME: "(?<depName>.*?)"',
+      ],
+      datasourceTemplate: 'helm',
+    };
+    const res = await extractPackageFile(
+      exampleGitlabCiYml,
+      '.gitlab-ci.yml',
       config
     );
     expect(res).toMatchSnapshot();

@@ -1,4 +1,3 @@
-import * as httpMock from '../../../test/http-mock';
 import { getName } from '../../../test/util';
 import {
   PLATFORM_TYPE_GITEA,
@@ -12,7 +11,7 @@ const url = 'https://github.com';
 
 jest.mock('global-agent');
 
-describe(getName(__filename), () => {
+describe(getName(), () => {
   const options = {
     hostType: PLATFORM_TYPE_GITHUB,
   };
@@ -33,8 +32,11 @@ describe(getName(__filename), () => {
       password: 'password',
     });
 
-    httpMock.reset();
-    httpMock.setup();
+    hostRules.add({
+      hostType: 'npm',
+      authType: 'Basic',
+      token: 'XXX',
+    });
   });
 
   afterEach(() => {
@@ -44,6 +46,9 @@ describe(getName(__filename), () => {
   it('adds token', () => {
     expect(applyHostRules(url, { ...options })).toMatchInlineSnapshot(`
       Object {
+        "context": Object {
+          "authType": undefined,
+        },
         "hostType": "github",
         "token": "token",
       }
@@ -57,6 +62,18 @@ describe(getName(__filename), () => {
         "hostType": "gitea",
         "password": "password",
         "username": undefined,
+      }
+    `);
+  });
+
+  it('adds custom auth', () => {
+    expect(applyHostRules(url, { hostType: 'npm' })).toMatchInlineSnapshot(`
+      Object {
+        "context": Object {
+          "authType": "Basic",
+        },
+        "hostType": "npm",
+        "token": "XXX",
       }
     `);
   });

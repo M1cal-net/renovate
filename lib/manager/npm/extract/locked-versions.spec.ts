@@ -1,3 +1,4 @@
+import { getName } from '../../../../test/util';
 import { getLockedVersions } from './locked-versions';
 
 /** @type any */
@@ -8,7 +9,7 @@ const yarn = require('./yarn');
 jest.mock('./npm');
 jest.mock('./yarn');
 
-describe('manager/npm/extract/locked-versions', () => {
+describe(getName(), () => {
   describe('.getLockedVersions()', () => {
     it.each([['1.22.0'], ['2.1.0'], ['2.2.0']])(
       'uses yarn.lock with yarn v%s',
@@ -35,6 +36,11 @@ describe('manager/npm/extract/locked-versions', () => {
               {
                 depName: 'b',
                 currentValue: '2.0.0',
+              },
+              {
+                depType: 'engines',
+                depName: 'yarn',
+                currentValue: `^${yarnVersion}`,
               },
             ],
           },
@@ -75,6 +81,36 @@ describe('manager/npm/extract/locked-versions', () => {
         expect(packageFiles).toMatchSnapshot();
       }
     );
+    it('appends <7 to npm constraints', async () => {
+      npm.getNpmLock.mockReturnValue({
+        lockedVersions: {
+          a: '1.0.0',
+          b: '2.0.0',
+          c: '3.0.0',
+        },
+        lockfileVersion: 1,
+      });
+      const packageFiles = [
+        {
+          npmLock: 'package-lock.json',
+          constraints: {
+            npm: '>=6.0.0',
+          },
+          deps: [
+            {
+              depName: 'a',
+              currentValue: '1.0.0',
+            },
+            {
+              depName: 'b',
+              currentValue: '2.0.0',
+            },
+          ],
+        },
+      ];
+      await getLockedVersions(packageFiles);
+      expect(packageFiles).toMatchSnapshot();
+    });
     it('ignores pnpm', async () => {
       const packageFiles = [
         {

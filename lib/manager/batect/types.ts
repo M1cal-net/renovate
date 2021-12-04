@@ -1,3 +1,5 @@
+import type { PackageDependency } from '../types';
+
 export interface BatectConfig {
   containers?: Record<string, BatectContainer>;
   include?: BatectInclude[];
@@ -11,10 +13,16 @@ export type BatectInclude = string | BatectFileInclude | BatectGitInclude;
 
 export interface BatectFileInclude {
   type: 'file';
+  path: string;
 }
 
 export interface BatectGitInclude {
   type: 'git';
   repo: string;
   ref: string;
+}
+
+export interface ExtractionResult {
+  deps: PackageDependency[];
+  referencedConfigFiles: string[];
 }

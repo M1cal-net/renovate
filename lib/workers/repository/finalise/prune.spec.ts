@@ -1,9 +1,11 @@
 import {
   RenovateConfig,
   getConfig,
+  getName,
   git,
   platform,
 } from '../../../../test/util';
+import { setAdminConfig } from '../../../config/admin';
 import { PLATFORM_TYPE_GITHUB } from '../../../constants/platforms';
 import * as cleanup from './prune';
 
@@ -18,8 +20,11 @@ beforeEach(() => {
   config.warnings = [];
 });
 
-describe('workers/repository/finalise/prune', () => {
+describe(getName(), () => {
   describe('pruneStaleBranches()', () => {
+    beforeEach(() => {
+      setAdminConfig();
+    });
     it('returns if no branchList', async () => {
       delete config.branchList;
       await cleanup.pruneStaleBranches(config, config.branchList);
@@ -65,7 +70,7 @@ describe('workers/repository/finalise/prune', () => {
     });
     it('does nothing on dryRun', async () => {
       config.branchList = ['renovate/a', 'renovate/b'];
-      config.dryRun = true;
+      setAdminConfig({ dryRun: true });
       git.getBranchList.mockReturnValueOnce(
         config.branchList.concat(['renovate/c'])
       );
@@ -105,7 +110,7 @@ describe('workers/repository/finalise/prune', () => {
     });
     it('skips comment if dry run', async () => {
       config.branchList = ['renovate/a', 'renovate/b'];
-      config.dryRun = true;
+      setAdminConfig({ dryRun: true });
       git.getBranchList.mockReturnValueOnce(
         config.branchList.concat(['renovate/c'])
       );
@@ -120,7 +125,7 @@ describe('workers/repository/finalise/prune', () => {
     });
     it('dry run delete branch no PR', async () => {
       config.branchList = ['renovate/a', 'renovate/b'];
-      config.dryRun = true;
+      setAdminConfig({ dryRun: true });
       git.getBranchList.mockReturnValueOnce(
         config.branchList.concat(['renovate/c'])
       );

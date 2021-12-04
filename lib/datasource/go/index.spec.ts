@@ -1,6 +1,12 @@
 import { getPkgReleases } from '..';
 import * as httpMock from '../../../test/http-mock';
+import { getName, logger, mocked } from '../../../test/util';
+import * as _hostRules from '../../util/host-rules';
 import { id as datasource, getDigest } from '.';
+
+jest.mock('../../util/host-rules');
+
+const hostRules = mocked(_hostRules);
 
 const res1 = `<!DOCTYPE html>
 <html>
@@ -13,6 +19,17 @@ const res1 = `<!DOCTYPE html>
 <body>
 Nothing to see here; <a href="https://godoc.org/golang.org/x/text">move along</a>.
 </body>
+</html>`;
+
+const resGitLabEE = `<html>
+<head>
+	<meta name="go-import" content="my.custom.domain/golang/myrepo git https://my.custom.domain/golang/myrepo.git" />
+	<meta name="go-source"
+		content="my.custom.domain/golang/myrepo https://my.custom.domain/golang/myrepo https://my.custom.domain/golang/myrepo/-/tree/master{/dir} https://my.custom.domain/golang/myrepo/-/blob/master{/dir}/{file}#L{line}" />
+</head>
+
+<body>go get https://my.custom.domain/golang/myrepo</body>
+
 </html>`;
 
 const resGitHubEnterprise = `<!DOCTYPE html>
@@ -29,13 +46,14 @@ const resGitHubEnterprise = `<!DOCTYPE html>
 </body>
 </html>`;
 
-describe('datasource/go', () => {
+describe(getName(), () => {
   beforeEach(() => {
-    httpMock.setup();
+    hostRules.find.mockReturnValue({});
+    hostRules.hosts.mockReturnValue([]);
   });
 
   afterEach(() => {
-    httpMock.reset();
+    jest.resetAllMocks();
   });
 
   describe('getDigest', () => {
@@ -57,6 +75,18 @@ describe('datasource/go', () => {
       expect(res).toBeNull();
       expect(httpMock.getTrace()).toMatchSnapshot();
     });
+    it('gitlab digest is not supported at the moment', async () => {
+      httpMock
+        .scope('https://gitlab.com/')
+        .get('/golang/text?go-get=1')
+        .reply(200, '');
+      const res = await getDigest(
+        { lookupName: 'gitlab.com/golang/text' },
+        null
+      );
+      expect(res).toBeNull();
+      expect(httpMock.getTrace()).toMatchSnapshot();
+    });
     it('returns digest', async () => {
       httpMock
         .scope('https://golang.org/')
@@ -70,7 +100,37 @@ describe('datasource/go', () => {
       expect(res).toBe('abcdefabcdefabcdefabcdef');
       expect(httpMock.getTrace()).toMatchSnapshot();
     });
+    it('support bitbucket digest', async () => {
+      httpMock
+        .scope('https://api.bitbucket.org')
+        .get('/2.0/repositories/golang/text')
+        .reply(200, { mainbranch: { name: 'master' } });
+      httpMock
+        .scope('https://api.bitbucket.org')
+        .get('/2.0/repositories/golang/text/commits/master')
+        .reply(200, {
+          pagelen: 1,
+          values: [
+            {
+              hash: '123',
+              date: '2020-11-19T09:05:35+00:00',
+            },
+          ],
+          page: 1,
+        });
+      const res = await getDigest(
+        {
+          lookupName: 'bitbucket.org/golang/text',
+        },
+        null
+      );
+      expect(res).toMatchSnapshot();
+      expect(res).not.toBeNull();
+      expect(res).toBeDefined();
+      expect(httpMock.getTrace()).toMatchSnapshot();
+    });
   });
+
   describe('getReleases', () => {
     it('returns null for empty result', async () => {
       httpMock
@@ -151,6 +211,62 @@ describe('datasource/go', () => {
       expect(res).not.toBeNull();
       expect(res).toBeDefined();
       expect(httpMock.getTrace()).toMatchSnapshot();
+    });
+    it('support self hosted gitlab private repositories', async () => {
+      hostRules.find.mockReturnValue({ token: 'some-token' });
+      httpMock
+        .scope('https://my.custom.domain/')
+        .get('/golang/myrepo?go-get=1')
+        .reply(200, resGitLabEE);
+      httpMock
+        .scope('https://my.custom.domain/')
+        .get('/api/v4/projects/golang%2Fmyrepo/repository/tags?per_page=100')
+        .reply(200, [{ name: 'v1.0.0' }, { name: 'v2.0.0' }]);
+      const res = await getPkgReleases({
+        datasource,
+        depName: 'my.custom.domain/golang/myrepo',
+      });
+      expect(res).toMatchSnapshot();
+      expect(res).not.toBeNull();
+      expect(res).toBeDefined();
+      expect(httpMock.getTrace()).toMatchSnapshot();
+    });
+    it('support bitbucket tags', async () => {
+      httpMock
+        .scope('https://api.bitbucket.org/')
+        .get('/2.0/repositories/golang/text/refs/tags')
+        .reply(200, {
+          pagelen: 2,
+          page: 1,
+          values: [{ name: 'v1.0.0' }, { name: 'v2.0.0' }],
+        });
+      const res = await getPkgReleases({
+        datasource,
+        depName: 'bitbucket.org/golang/text',
+      });
+      expect(res).toMatchSnapshot();
+      expect(res).not.toBeNull();
+      expect(res).toBeDefined();
+      expect(httpMock.getTrace()).toMatchSnapshot();
+    });
+    it('unknown datasource returns null', async () => {
+      httpMock
+        .scope('https://some.unknown.website/')
+        .get('/example/module?go-get=1')
+        .reply(200);
+      const res = await getPkgReleases({
+        datasource,
+        depName: 'some.unknown.website/example/module',
+      });
+      expect(res).toMatchSnapshot();
+      expect(res).toBeNull();
+      expect(httpMock.getTrace()).toMatchSnapshot();
+      expect(logger.logger.info).toHaveBeenCalledWith(
+        { lookupName: 'some.unknown.website/example/module' },
+        'Unsupported go host - cannot look up versions'
+      );
+      expect(logger.logger.error).not.toHaveBeenCalled();
+      expect(logger.logger.fatal).not.toHaveBeenCalled();
     });
     it('support ghe', async () => {
       httpMock
@@ -256,7 +372,6 @@ describe('datasource/go', () => {
       const tags = [{ name: 'a/v1.0.0' }, { name: 'b/v2.0.0' }];
 
       for (const pkg of packages) {
-        httpMock.setup();
         httpMock
           .scope('https://api.github.com/')
           .get('/repos/x/text/tags?per_page=100')
@@ -271,10 +386,10 @@ describe('datasource/go', () => {
 
         const httpCalls = httpMock.getTrace();
         expect(httpCalls).toMatchSnapshot();
-        httpMock.reset();
+        httpMock.clear();
       }
     });
-    it('falls back to old behaviour', async () => {
+    it('returns none if no tags match submodules', async () => {
       const packages = [
         { datasource, depName: 'github.com/x/text/a' },
         { datasource, depName: 'github.com/x/text/b' },
@@ -282,7 +397,6 @@ describe('datasource/go', () => {
       const tags = [{ name: 'v1.0.0' }, { name: 'v2.0.0' }];
 
       for (const pkg of packages) {
-        httpMock.setup();
         httpMock
           .scope('https://api.github.com/')
           .get('/repos/x/text/tags?per_page=100')
@@ -291,15 +405,60 @@ describe('datasource/go', () => {
           .reply(200, []);
 
         const result = await getPkgReleases(pkg);
-        expect(result.releases).toHaveLength(2);
-        expect(result.releases.map(({ version }) => version)).toStrictEqual(
-          tags.map(({ name }) => name)
-        );
+        expect(result.releases).toHaveLength(0);
 
         const httpCalls = httpMock.getTrace();
         expect(httpCalls).toMatchSnapshot();
-        httpMock.reset();
+        httpMock.clear();
       }
+    });
+    it('works for nested modules on github v2+ major upgrades', async () => {
+      const pkg = { datasource, depName: 'github.com/x/text/b/v2' };
+      const tags = [
+        { name: 'a/v1.0.0' },
+        { name: 'v5.0.0' },
+        { name: 'b/v2.0.0' },
+        { name: 'b/v3.0.0' },
+      ];
+
+      httpMock
+        .scope('https://api.github.com/')
+        .get('/repos/x/text/tags?per_page=100')
+        .reply(200, tags)
+        .get('/repos/x/text/releases?per_page=100')
+        .reply(200, []);
+
+      const result = await getPkgReleases(pkg);
+      expect(result.releases).toEqual([
+        { gitRef: 'b/v2.0.0', version: 'v2.0.0' },
+        { gitRef: 'b/v3.0.0', version: 'v3.0.0' },
+      ]);
+
+      const httpCalls = httpMock.getTrace();
+      expect(httpCalls).toMatchSnapshot();
+    });
+    it('handles fyne.io', async () => {
+      httpMock
+        .scope('https://fyne.io/')
+        .get('/fyne?go-get=1')
+        .reply(
+          200,
+          '<meta name="go-import" content="fyne.io/fyne git https://github.com/fyne-io/fyne">'
+        );
+      httpMock
+        .scope('https://api.github.com/')
+        .get('/repos/fyne-io/fyne/tags?per_page=100')
+        .reply(200, [{ name: 'v1.0.0' }, { name: 'v2.0.0' }])
+        .get('/repos/fyne-io/fyne/releases?per_page=100')
+        .reply(200, []);
+      const res = await getPkgReleases({
+        datasource,
+        depName: 'fyne.io/fyne',
+      });
+      expect(res).toMatchSnapshot();
+      expect(res).not.toBeNull();
+      expect(res).toBeDefined();
+      expect(httpMock.getTrace()).toMatchSnapshot();
     });
   });
 });

@@ -5,9 +5,9 @@ Array [
   Object {
     "headers": Object {
       "accept": "application/json",
-      "accept-encoding": "gzip, deflate",
+      "accept-encoding": "gzip, deflate, br",
       "host": "api.bitbucket.org",
-      "user-agent": "https://github.com/renovatebot/renovate",
+      "user-agent": "RenovateBot/0.0.0-semantic-release (https://github.com/renovatebot/renovate)",
     },
     "method": "GET",
     "url": "https://api.bitbucket.org/2.0/repositories/some/repo/pullrequests/5/comments?pagelen=100",
@@ -16,11 +16,11 @@ Array [
     "body": "{\\"content\\":{\\"raw\\":\\"### topic\\\\n\\\\ncontent\\"}}",
     "headers": Object {
       "accept": "application/json",
-      "accept-encoding": "gzip, deflate",
+      "accept-encoding": "gzip, deflate, br",
       "content-length": "42",
       "content-type": "application/json",
       "host": "api.bitbucket.org",
-      "user-agent": "https://github.com/renovatebot/renovate",
+      "user-agent": "RenovateBot/0.0.0-semantic-release (https://github.com/renovatebot/renovate)",
     },
     "method": "POST",
     "url": "https://api.bitbucket.org/2.0/repositories/some/repo/pullrequests/5/comments",
@@ -33,9 +33,9 @@ Array [
   Object {
     "headers": Object {
       "accept": "application/json",
-      "accept-encoding": "gzip, deflate",
+      "accept-encoding": "gzip, deflate, br",
       "host": "api.bitbucket.org",
-      "user-agent": "https://github.com/renovatebot/renovate",
+      "user-agent": "RenovateBot/0.0.0-semantic-release (https://github.com/renovatebot/renovate)",
     },
     "method": "GET",
     "url": "https://api.bitbucket.org/2.0/repositories/some/repo/pullrequests/5/comments?pagelen=100",
@@ -44,11 +44,11 @@ Array [
     "body": "{\\"content\\":{\\"raw\\":\\"### some-subject\\\\n\\\\nsome\\\\ncontent\\"}}",
     "headers": Object {
       "accept": "application/json",
-      "accept-encoding": "gzip, deflate",
+      "accept-encoding": "gzip, deflate, br",
       "content-length": "55",
       "content-type": "application/json",
       "host": "api.bitbucket.org",
-      "user-agent": "https://github.com/renovatebot/renovate",
+      "user-agent": "RenovateBot/0.0.0-semantic-release (https://github.com/renovatebot/renovate)",
     },
     "method": "PUT",
     "url": "https://api.bitbucket.org/2.0/repositories/some/repo/pullrequests/5/comments/5",
@@ -61,9 +61,9 @@ Array [
   Object {
     "headers": Object {
       "accept": "application/json",
-      "accept-encoding": "gzip, deflate",
+      "accept-encoding": "gzip, deflate, br",
       "host": "api.bitbucket.org",
-      "user-agent": "https://github.com/renovatebot/renovate",
+      "user-agent": "RenovateBot/0.0.0-semantic-release (https://github.com/renovatebot/renovate)",
     },
     "method": "GET",
     "url": "https://api.bitbucket.org/2.0/repositories/some/repo/pullrequests/3/comments?pagelen=100",
@@ -76,9 +76,9 @@ Array [
   Object {
     "headers": Object {
       "accept": "application/json",
-      "accept-encoding": "gzip, deflate",
+      "accept-encoding": "gzip, deflate, br",
       "host": "api.bitbucket.org",
-      "user-agent": "https://github.com/renovatebot/renovate",
+      "user-agent": "RenovateBot/0.0.0-semantic-release (https://github.com/renovatebot/renovate)",
     },
     "method": "GET",
     "url": "https://api.bitbucket.org/2.0/repositories/some/repo/pullrequests/5/comments?pagelen=100",
@@ -91,9 +91,9 @@ Array [
   Object {
     "headers": Object {
       "accept": "application/json",
-      "accept-encoding": "gzip, deflate",
+      "accept-encoding": "gzip, deflate, br",
       "host": "api.bitbucket.org",
-      "user-agent": "https://github.com/renovatebot/renovate",
+      "user-agent": "RenovateBot/0.0.0-semantic-release (https://github.com/renovatebot/renovate)",
     },
     "method": "GET",
     "url": "https://api.bitbucket.org/2.0/repositories/some/repo/pullrequests/5/comments?pagelen=100",
@@ -101,9 +101,9 @@ Array [
   Object {
     "headers": Object {
       "accept": "application/json",
-      "accept-encoding": "gzip, deflate",
+      "accept-encoding": "gzip, deflate, br",
       "host": "api.bitbucket.org",
-      "user-agent": "https://github.com/renovatebot/renovate",
+      "user-agent": "RenovateBot/0.0.0-semantic-release (https://github.com/renovatebot/renovate)",
     },
     "method": "DELETE",
     "url": "https://api.bitbucket.org/2.0/repositories/some/repo/pullrequests/5/comments/5",
@@ -116,9 +116,9 @@ Array [
   Object {
     "headers": Object {
       "accept": "application/json",
-      "accept-encoding": "gzip, deflate",
+      "accept-encoding": "gzip, deflate, br",
       "host": "api.bitbucket.org",
-      "user-agent": "https://github.com/renovatebot/renovate",
+      "user-agent": "RenovateBot/0.0.0-semantic-release (https://github.com/renovatebot/renovate)",
     },
     "method": "GET",
     "url": "https://api.bitbucket.org/2.0/repositories/some/repo/pullrequests/5/comments?pagelen=100",
@@ -126,9 +126,9 @@ Array [
   Object {
     "headers": Object {
       "accept": "application/json",
-      "accept-encoding": "gzip, deflate",
+      "accept-encoding": "gzip, deflate, br",
       "host": "api.bitbucket.org",
-      "user-agent": "https://github.com/renovatebot/renovate",
+      "user-agent": "RenovateBot/0.0.0-semantic-release (https://github.com/renovatebot/renovate)",
     },
     "method": "DELETE",
     "url": "https://api.bitbucket.org/2.0/repositories/some/repo/pullrequests/5/comments/5",
@@ -141,9 +141,9 @@ Array [
   Object {
     "headers": Object {
       "accept": "application/json",
-      "accept-encoding": "gzip, deflate",
+      "accept-encoding": "gzip, deflate, br",
       "host": "api.bitbucket.org",
-      "user-agent": "https://github.com/renovatebot/renovate",
+      "user-agent": "RenovateBot/0.0.0-semantic-release (https://github.com/renovatebot/renovate)",
     },
     "method": "GET",
     "url": "https://api.bitbucket.org/2.0/repositories/some/repo/pullrequests/5/comments?pagelen=100",
@@ -156,9 +156,9 @@ Array [
   Object {
     "headers": Object {
       "accept": "application/json",
-      "accept-encoding": "gzip, deflate",
+      "accept-encoding": "gzip, deflate, br",
       "host": "api.bitbucket.org",
-      "user-agent": "https://github.com/renovatebot/renovate",
+      "user-agent": "RenovateBot/0.0.0-semantic-release (https://github.com/renovatebot/renovate)",
     },
     "method": "GET",
     "url": "https://api.bitbucket.org/2.0/repositories/some/repo/pullrequests/5/comments?pagelen=100",

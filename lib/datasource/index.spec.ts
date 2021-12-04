@@ -1,15 +1,18 @@
-import { mocked } from '../../test/util';
+import { getName, logger, mocked } from '../../test/util';
 import {
   EXTERNAL_HOST_ERROR,
   HOST_DISABLED,
 } from '../constants/error-messages';
 import { ExternalHostError } from '../types/errors/external-host-error';
 import { loadModules } from '../util/modules';
+import { Datasource } from './datasource';
 import * as datasourceDocker from './docker';
+import { GalaxyDatasource } from './galaxy';
 import * as datasourceGithubTags from './github-tags';
 import * as datasourceMaven from './maven';
 import * as datasourceNpm from './npm';
 import * as datasourcePackagist from './packagist';
+import type { DatasourceApi } from './types';
 import * as datasource from '.';
 
 jest.mock('./docker');
@@ -22,7 +25,7 @@ const mavenDatasource = mocked(datasourceMaven);
 const npmDatasource = mocked(datasourceNpm);
 const packagistDatasource = mocked(datasourcePackagist);
 
-describe('datasource/index', () => {
+describe(getName(), () => {
   beforeEach(() => {
     jest.resetAllMocks();
   });
@@ -30,22 +33,29 @@ describe('datasource/index', () => {
     expect(datasource.getDatasources()).toBeDefined();
     expect(datasource.getDatasourceList()).toBeDefined();
   });
-  it('validates dataource', () => {
-    function validateDatasource(
-      module: datasource.Datasource,
-      name: string
-    ): boolean {
+  it('validates datasource', () => {
+    function validateDatasource(module: DatasourceApi, name: string): boolean {
       if (!module.getReleases) {
         return false;
       }
-      if (module.id !== name) {
-        return false;
-      }
-      return true;
+      return module.id === name;
     }
-    const dss = datasource.getDatasources();
+    function filterClassBasedDatasources(name: string): boolean {
+      return !(datasource.getDatasources().get(name) instanceof Datasource);
+    }
+    const dss = new Map(datasource.getDatasources());
 
-    const loadedDs = loadModules(__dirname, validateDatasource);
+    for (const ds of dss.values()) {
+      if (ds instanceof Datasource) {
+        dss.delete(ds.id);
+      }
+    }
+
+    const loadedDs = loadModules(
+      __dirname,
+      validateDatasource,
+      filterClassBasedDatasources
+    );
     expect(Array.from(dss.keys())).toEqual(Object.keys(loadedDs));
 
     for (const dsName of dss.keys()) {
@@ -79,6 +89,14 @@ describe('datasource/index', () => {
       await datasource.getPkgReleases({
         datasource: 'gitbucket',
         depName: 'some/dep',
+      })
+    ).toBeNull();
+  });
+  it('returns class datasource', async () => {
+    expect(
+      await datasource.getPkgReleases({
+        datasource: 'cdnjs',
+        depName: null,
       })
     ).toBeNull();
   });
@@ -129,6 +147,14 @@ describe('datasource/index', () => {
     });
     expect(res).toMatchSnapshot();
     expect(res.sourceUrl).toBeDefined();
+  });
+  it('ignores and warns for registryUrls', async () => {
+    await datasource.getPkgReleases({
+      datasource: GalaxyDatasource.id,
+      depName: 'some.dep',
+      registryUrls: ['https://google.com/'],
+    });
+    expect(logger.logger.warn).toHaveBeenCalled();
   });
   it('warns if multiple registryUrls for registryStrategy=first', async () => {
     dockerDatasource.getReleases.mockResolvedValue(null);

@@ -4,32 +4,29 @@ import {
   exec as _cpExec,
 } from 'child_process';
 import { envMock } from '../../../test/exec-util';
-import {
-  BinarySource,
-  ExecConfig,
-  RawExecOptions,
-  VolumeOption,
-} from './common';
+import { getName } from '../../../test/util';
+import { setAdminConfig } from '../../config/admin';
+import type { RepoAdminConfig } from '../../config/types';
+import { TEMPORARY_ERROR } from '../../constants/error-messages';
+import { RawExecOptions, VolumeOption } from './common';
 import * as dockerModule from './docker';
-import { ExecOptions, exec, setExecConfig } from '.';
+import { ExecOptions, exec } from '.';
 
 const cpExec: jest.Mock<typeof _cpExec> = _cpExec as any;
 
 jest.mock('child_process');
 
 interface TestInput {
-  execConfig: Partial<ExecConfig>;
   processEnv: Record<string, string>;
   inCmd: string | string[];
   inOpts: ExecOptions;
   outCmd: string[];
   outOpts: RawExecOptions[];
-  trustLevel?: 'high' | 'low';
+  adminConfig?: Partial<RepoAdminConfig>;
 }
 
-describe(`Child process execution wrapper`, () => {
-  let processEnvOrig;
-  let trustLevelOrig;
+describe(getName(), () => {
+  let processEnvOrig: NodeJS.ProcessEnv;
 
   const cacheDir = '/tmp/renovate/cache/';
   const cwd = '/tmp/renovate/github/some/repo/';
@@ -37,27 +34,22 @@ describe(`Child process execution wrapper`, () => {
   const defaultCwd = `-w "${cwd}"`;
   const defaultVolumes = `-v "${cwd}":"${cwd}" -v "${cacheDir}":"${cacheDir}"`;
 
-  const execConfig = {
-    cacheDir,
-    localDir: cwd,
-  };
-
   beforeEach(() => {
     dockerModule.resetPrefetchedImages();
     jest.resetAllMocks();
     jest.restoreAllMocks();
     jest.resetModules();
     processEnvOrig = process.env;
-    trustLevelOrig = global.trustLevel;
+    setAdminConfig();
   });
 
   afterEach(() => {
     process.env = processEnvOrig;
-    global.trustLevel = trustLevelOrig;
   });
 
-  const image = 'renovate/image';
-  const name = image.replace(/\//g, '_');
+  const image = 'image';
+  const fullImage = `renovate/${image}`;
+  const name = `renovate_${image}`;
   const tag = '1.2.3';
   const inCmd = 'echo hello';
   const outCmd = ['echo hello'];
@@ -73,7 +65,7 @@ describe(`Child process execution wrapper`, () => {
   const encoding = 'utf-8';
   const docker = { image };
   const processEnv = envMock.full;
-  const dockerPullCmd = `docker pull ${image}`;
+  const dockerPullCmd = `docker pull ${fullImage}`;
   const dockerRemoveCmd = `docker ps --filter name=${name} -aq`;
   const dockerPullOpts = { encoding };
   const dockerRemoveOpts = dockerPullOpts;
@@ -82,7 +74,6 @@ describe(`Child process execution wrapper`, () => {
     [
       'Single command',
       {
-        execConfig,
         processEnv,
         inCmd,
         inOpts: {},
@@ -102,7 +93,6 @@ describe(`Child process execution wrapper`, () => {
     [
       'Multiple commands',
       {
-        execConfig,
         processEnv,
         inCmd: ['echo "begin"', inCmd, "echo 'end'"],
         inOpts: {},
@@ -136,7 +126,6 @@ describe(`Child process execution wrapper`, () => {
     [
       'Explicit env option',
       {
-        execConfig,
         processEnv,
         inCmd,
         inOpts: { env: { FOO: 'BAR' } },
@@ -156,7 +145,6 @@ describe(`Child process execution wrapper`, () => {
     [
       'Low trust level',
       {
-        execConfig,
         processEnv,
         inCmd,
         inOpts: {},
@@ -176,7 +164,6 @@ describe(`Child process execution wrapper`, () => {
     [
       'High trust level',
       {
-        execConfig,
         processEnv: envMock.full,
         inCmd,
         inOpts: {},
@@ -190,21 +177,20 @@ describe(`Child process execution wrapper`, () => {
             maxBuffer: 10485760,
           },
         ],
-        trustLevel: 'high',
+        adminConfig: { exposeAllEnv: true },
       },
     ],
 
     [
       'Docker',
       {
-        execConfig: { ...execConfig, binarySource: BinarySource.Docker },
         processEnv,
         inCmd,
         inOpts: { docker, cwd },
         outCmd: [
           dockerPullCmd,
           dockerRemoveCmd,
-          `docker run --rm --name=${name} --label=renovate_child ${defaultVolumes} ${defaultCwd} ${image} bash -l -c "${inCmd}"`,
+          `docker run --rm --name=${name} --label=renovate_child ${defaultVolumes} ${defaultCwd} ${fullImage} bash -l -c "${inCmd}"`,
         ],
         outOpts: [
           dockerPullOpts,
@@ -217,13 +203,13 @@ describe(`Child process execution wrapper`, () => {
             maxBuffer: 10485760,
           },
         ],
+        adminConfig: { binarySource: 'docker' },
       },
     ],
 
     [
       'Extra env vars',
       {
-        execConfig,
         processEnv,
         inCmd,
         inOpts: {
@@ -244,13 +230,13 @@ describe(`Child process execution wrapper`, () => {
             maxBuffer: 10485760,
           },
         ],
+        adminConfig: { binarySource: 'docker' },
       },
     ],
 
     [
       'Extra env vars (Docker)',
       {
-        execConfig: { ...execConfig, binarySource: BinarySource.Docker },
         processEnv,
         inCmd,
         inOpts: {
@@ -266,7 +252,7 @@ describe(`Child process execution wrapper`, () => {
         outCmd: [
           dockerPullCmd,
           dockerRemoveCmd,
-          `docker run --rm --name=${name} --label=renovate_child ${defaultVolumes} -e SELECTED_ENV_VAR ${defaultCwd} ${image} bash -l -c "${inCmd}"`,
+          `docker run --rm --name=${name} --label=renovate_child ${defaultVolumes} -e SELECTED_ENV_VAR ${defaultCwd} ${fullImage} bash -l -c "${inCmd}"`,
         ],
         outOpts: [
           dockerPullOpts,
@@ -279,13 +265,13 @@ describe(`Child process execution wrapper`, () => {
             maxBuffer: 10485760,
           },
         ],
+        adminConfig: { binarySource: 'docker' },
       },
     ],
 
     [
       'Extra env vars defaults',
       {
-        execConfig,
         processEnv: envMock.basic,
         inCmd,
         inOpts: { cwd, extraEnv: { SELECTED_ENV_VAR: 'Default value' } },
@@ -299,13 +285,13 @@ describe(`Child process execution wrapper`, () => {
             maxBuffer: 10485760,
           },
         ],
+        adminConfig: { binarySource: 'docker' },
       },
     ],
 
     [
       'Extra env vars defaults (Docker)',
       {
-        execConfig: { ...execConfig, binarySource: BinarySource.Docker },
         processEnv: envMock.basic,
         inCmd,
         inOpts: {
@@ -316,7 +302,7 @@ describe(`Child process execution wrapper`, () => {
         outCmd: [
           dockerPullCmd,
           dockerRemoveCmd,
-          `docker run --rm --name=${name} --label=renovate_child ${defaultVolumes} -e SELECTED_ENV_VAR ${defaultCwd} ${image} bash -l -c "${inCmd}"`,
+          `docker run --rm --name=${name} --label=renovate_child ${defaultVolumes} -e SELECTED_ENV_VAR ${defaultCwd} ${fullImage} bash -l -c "${inCmd}"`,
         ],
         outOpts: [
           dockerPullOpts,
@@ -329,20 +315,20 @@ describe(`Child process execution wrapper`, () => {
             maxBuffer: 10485760,
           },
         ],
+        adminConfig: { binarySource: 'docker' },
       },
     ],
 
     [
       'Docker tags',
       {
-        execConfig: { ...execConfig, binarySource: BinarySource.Docker },
         processEnv,
         inCmd,
         inOpts: { docker: { image, tag }, cwd },
         outCmd: [
           `${dockerPullCmd}:${tag}`,
           dockerRemoveCmd,
-          `docker run --rm --name=${name} --label=renovate_child ${defaultVolumes} ${defaultCwd} ${image}:${tag} bash -l -c "${inCmd}"`,
+          `docker run --rm --name=${name} --label=renovate_child ${defaultVolumes} ${defaultCwd} ${fullImage}:${tag} bash -l -c "${inCmd}"`,
         ],
         outOpts: [
           dockerPullOpts,
@@ -355,20 +341,20 @@ describe(`Child process execution wrapper`, () => {
             maxBuffer: 10485760,
           },
         ],
+        adminConfig: { binarySource: 'docker' },
       },
     ],
 
     [
       'Docker volumes',
       {
-        execConfig: { ...execConfig, binarySource: BinarySource.Docker },
         processEnv,
         inCmd,
         inOpts: { cwd, docker: { image, volumes } },
         outCmd: [
           dockerPullCmd,
           dockerRemoveCmd,
-          `docker run --rm --name=${name} --label=renovate_child ${defaultVolumes} -v "${volume_1}":"${volume_1}" -v "${volume_2_from}":"${volume_2_to}" -w "${cwd}" ${image} bash -l -c "${inCmd}"`,
+          `docker run --rm --name=${name} --label=renovate_child ${defaultVolumes} -v "${volume_1}":"${volume_1}" -v "${volume_2_from}":"${volume_2_to}" -w "${cwd}" ${fullImage} bash -l -c "${inCmd}"`,
         ],
         outOpts: [
           dockerPullOpts,
@@ -381,24 +367,20 @@ describe(`Child process execution wrapper`, () => {
             maxBuffer: 10485760,
           },
         ],
+        adminConfig: { binarySource: 'docker' },
       },
     ],
 
     [
       'Docker user',
       {
-        execConfig: {
-          ...execConfig,
-          binarySource: BinarySource.Docker,
-          dockerUser: 'foobar',
-        },
         processEnv,
         inCmd,
         inOpts: { docker },
         outCmd: [
           dockerPullCmd,
           dockerRemoveCmd,
-          `docker run --rm --name=${name} --label=renovate_child --user=foobar ${defaultVolumes} -w "${cwd}" ${image} bash -l -c "${inCmd}"`,
+          `docker run --rm --name=${name} --label=renovate_child --user=foobar ${defaultVolumes} -w "${cwd}" ${fullImage} bash -l -c "${inCmd}"`,
         ],
         outOpts: [
           dockerPullOpts,
@@ -411,17 +393,16 @@ describe(`Child process execution wrapper`, () => {
             maxBuffer: 10485760,
           },
         ],
+        adminConfig: {
+          dockerUser: 'foobar',
+          binarySource: 'docker',
+        },
       },
     ],
 
     [
       'Docker image prefix',
       {
-        execConfig: {
-          ...execConfig,
-          binarySource: BinarySource.Docker,
-          dockerImagePrefix: 'ghcr.io/renovatebot',
-        },
         processEnv,
         inCmd,
         inOpts: { docker },
@@ -441,16 +422,45 @@ describe(`Child process execution wrapper`, () => {
             maxBuffer: 10485760,
           },
         ],
+        adminConfig: {
+          dockerImagePrefix: 'ghcr.io/renovatebot',
+          binarySource: 'docker',
+        },
+      },
+    ],
+
+    [
+      'Docker child prefix',
+      {
+        processEnv,
+        inCmd,
+        inOpts: { docker },
+        outCmd: [
+          dockerPullCmd,
+          `docker ps --filter name=myprefix_${image} -aq`,
+          `docker run --rm --name=myprefix_${image} --label=myprefix_child ${defaultVolumes} -w "${cwd}" ${fullImage} bash -l -c "${inCmd}"`,
+        ],
+        outOpts: [
+          dockerPullOpts,
+          dockerRemoveOpts,
+          {
+            cwd,
+            encoding,
+            env: envMock.basic,
+            timeout: 900000,
+            maxBuffer: 10485760,
+          },
+        ],
+        adminConfig: {
+          dockerChildPrefix: 'myprefix_',
+          binarySource: 'docker',
+        },
       },
     ],
 
     [
       'Docker extra commands',
       {
-        execConfig: {
-          ...execConfig,
-          binarySource: BinarySource.Docker,
-        },
         processEnv,
         inCmd,
         inOpts: {
@@ -463,7 +473,7 @@ describe(`Child process execution wrapper`, () => {
         outCmd: [
           dockerPullCmd,
           dockerRemoveCmd,
-          `docker run --rm --name=${name} --label=renovate_child ${defaultVolumes} -w "${cwd}" ${image} bash -l -c "preCommand1 && preCommand2 && ${inCmd} && postCommand1 && postCommand2"`,
+          `docker run --rm --name=${name} --label=renovate_child ${defaultVolumes} -w "${cwd}" ${fullImage} bash -l -c "preCommand1 && preCommand2 && ${inCmd} && postCommand1 && postCommand2"`,
         ],
         outOpts: [
           dockerPullOpts,
@@ -476,16 +486,13 @@ describe(`Child process execution wrapper`, () => {
             maxBuffer: 10485760,
           },
         ],
+        adminConfig: { binarySource: 'docker' },
       },
     ],
 
     [
       'Docker commands are nullable',
       {
-        execConfig: {
-          ...execConfig,
-          binarySource: BinarySource.Docker,
-        },
         processEnv,
         inCmd,
         inOpts: {
@@ -498,7 +505,7 @@ describe(`Child process execution wrapper`, () => {
         outCmd: [
           dockerPullCmd,
           dockerRemoveCmd,
-          `docker run --rm --name=${name} --label=renovate_child ${defaultVolumes} -w "${cwd}" ${image} bash -l -c "${inCmd}"`,
+          `docker run --rm --name=${name} --label=renovate_child ${defaultVolumes} -w "${cwd}" ${fullImage} bash -l -c "${inCmd}"`,
         ],
         outOpts: [
           dockerPullOpts,
@@ -511,13 +518,13 @@ describe(`Child process execution wrapper`, () => {
             maxBuffer: 10485760,
           },
         ],
+        adminConfig: { binarySource: 'docker' },
       },
     ],
 
     [
       'Explicit maxBuffer',
       {
-        execConfig,
         processEnv,
         inCmd,
         inOpts: {
@@ -533,32 +540,134 @@ describe(`Child process execution wrapper`, () => {
             maxBuffer: 1024,
           },
         ],
+        adminConfig: { binarySource: 'docker' },
+      },
+    ],
+
+    [
+      'Custom environment variables for child',
+      {
+        processEnv: envMock.basic,
+        inCmd,
+        inOpts: {},
+        outCmd,
+        outOpts: [
+          {
+            cwd,
+            encoding,
+            env: { ...envMock.basic, CUSTOM_KEY: 'CUSTOM_VALUE' },
+            timeout: 900000,
+            maxBuffer: 10485760,
+          },
+        ],
+        adminConfig: {
+          customEnvVariables: {
+            CUSTOM_KEY: 'CUSTOM_VALUE',
+          },
+          binarySource: 'docker',
+        },
+      },
+    ],
+
+    [
+      'Custom environment variables for child should override',
+      {
+        processEnv: { ...envMock.basic, CUSTOM_KEY: 'CUSTOM_VALUE' },
+        inCmd,
+        inOpts: {},
+        outCmd,
+        outOpts: [
+          {
+            cwd,
+            encoding,
+            env: { ...envMock.basic, CUSTOM_KEY: 'CUSTOM_OVERRIDEN_VALUE' },
+            timeout: 900000,
+            maxBuffer: 10485760,
+          },
+        ],
+        adminConfig: {
+          customEnvVariables: {
+            CUSTOM_KEY: 'CUSTOM_OVERRIDEN_VALUE',
+          },
+          binarySource: 'docker',
+        },
+      },
+    ],
+
+    [
+      'Custom environment variables for child (Docker)',
+      {
+        processEnv,
+        inCmd,
+        inOpts: { docker, cwd },
+        outCmd: [
+          dockerPullCmd,
+          dockerRemoveCmd,
+          `docker run --rm --name=${name} --label=renovate_child ${defaultVolumes} -e CUSTOM_KEY ${defaultCwd} ${fullImage} bash -l -c "${inCmd}"`,
+        ],
+        outOpts: [
+          dockerPullOpts,
+          dockerRemoveOpts,
+          {
+            cwd,
+            encoding,
+            env: { ...envMock.basic, CUSTOM_KEY: 'CUSTOM_VALUE' },
+            timeout: 900000,
+            maxBuffer: 10485760,
+          },
+        ],
+        adminConfig: {
+          customEnvVariables: {
+            CUSTOM_KEY: 'CUSTOM_VALUE',
+          },
+          binarySource: 'docker',
+        },
+      },
+    ],
+
+    [
+      'Custom environment variables for child should override (Docker)',
+      {
+        processEnv: { ...envMock.basic, CUSTOM_KEY: 'CUSTOM_VALUE' },
+        inCmd,
+        inOpts: { docker, cwd },
+        outCmd: [
+          dockerPullCmd,
+          dockerRemoveCmd,
+          `docker run --rm --name=${name} --label=renovate_child ${defaultVolumes} -e CUSTOM_KEY ${defaultCwd} ${fullImage} bash -l -c "${inCmd}"`,
+        ],
+        outOpts: [
+          dockerPullOpts,
+          dockerRemoveOpts,
+          {
+            cwd,
+            encoding,
+            env: { ...envMock.basic, CUSTOM_KEY: 'CUSTOM_OVERRIDEN_VALUE' },
+            timeout: 900000,
+            maxBuffer: 10485760,
+          },
+        ],
+        adminConfig: {
+          customEnvVariables: {
+            CUSTOM_KEY: 'CUSTOM_OVERRIDEN_VALUE',
+          },
+          binarySource: 'docker',
+        },
       },
     ],
   ];
 
   test.each(testInputs)('%s', async (_msg, testOpts) => {
     const {
-      execConfig: config,
       processEnv: procEnv,
       inCmd: cmd,
       inOpts,
       outCmd: outCommand,
       outOpts,
-      trustLevel,
+      adminConfig = {} as any,
     } = testOpts;
 
     process.env = procEnv;
-    if (trustLevel) {
-      global.trustLevel = trustLevel;
-    }
-
-    if (config) {
-      jest
-        .spyOn(dockerModule, 'removeDanglingContainers')
-        .mockResolvedValueOnce();
-      await setExecConfig(config);
-    }
 
     const actualCmd: string[] = [];
     const actualOpts: ChildProcessExecOptions[] = [];
@@ -568,7 +677,7 @@ describe(`Child process execution wrapper`, () => {
       callback(null, { stdout: '', stderr: '' });
       return undefined;
     });
-
+    setAdminConfig({ cacheDir, localDir: cwd, ...adminConfig });
     await exec(cmd as string, inOpts);
 
     expect(actualCmd).toEqual(outCommand);
@@ -585,19 +694,19 @@ describe(`Child process execution wrapper`, () => {
       return undefined;
     });
 
-    await setExecConfig({ binarySource: BinarySource.Global });
+    setAdminConfig({ binarySource: 'global' });
     await exec(inCmd, { docker });
     await exec(inCmd, { docker });
 
-    await setExecConfig({ binarySource: BinarySource.Docker });
+    setAdminConfig({ binarySource: 'docker' });
     await exec(inCmd, { docker });
     await exec(inCmd, { docker });
 
-    await setExecConfig({ binarySource: BinarySource.Global });
+    setAdminConfig({ binarySource: 'global' });
     await exec(inCmd, { docker });
     await exec(inCmd, { docker });
 
-    await setExecConfig({ binarySource: BinarySource.Docker });
+    setAdminConfig({ binarySource: 'docker' });
     await exec(inCmd, { docker });
     await exec(inCmd, { docker });
 
@@ -620,10 +729,7 @@ describe(`Child process execution wrapper`, () => {
   });
 
   it('wraps error if removeDockerContainer throws an error', async () => {
-    cpExec.mockImplementationOnce((_execCmd, _execOpts, callback) =>
-      callback(null, { stdout: '', stderr: '' })
-    );
-    await setExecConfig({ binarySource: BinarySource.Docker });
+    setAdminConfig({ binarySource: 'docker' });
     cpExec.mockImplementation(() => {
       throw new Error('some error occurred');
     });
@@ -654,5 +760,22 @@ describe(`Child process execution wrapper`, () => {
       )
     );
     expect(removeDockerContainerSpy).toHaveBeenCalledTimes(2);
+  });
+  it('converts to TEMPORARY_ERROR', async () => {
+    cpExec.mockImplementation(() => {
+      class ErrorSignal extends Error {
+        signal?: string;
+      }
+      const error = new ErrorSignal();
+      error.signal = 'SIGTERM';
+      throw error;
+    });
+    const removeDockerContainerSpy = jest.spyOn(
+      dockerModule,
+      'removeDockerContainer'
+    );
+    const promise = exec('foobar', {});
+    await expect(promise).rejects.toThrow(TEMPORARY_ERROR);
+    expect(removeDockerContainerSpy).toHaveBeenCalledTimes(0);
   });
 });
