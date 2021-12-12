@@ -1,0 +1,1 @@
+/usr/bin/git -c protocol.version=2 fetch --prune --progress --no-recurse-submodules origin +refs/heads/:refs/remotes/origin/ +refs/tags/:refs/tags/ +8befe66d4d717d85b69c9381158332a3eab05464:refs/remotes/pull/6897/merge
