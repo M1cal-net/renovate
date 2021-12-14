@@ -1,42 +1,62 @@
-import { logger } from '../../../../logger';
-import { getOnboardingConfig } from './config';
+import { getAdminConfig } from '../../../../config/admin';
 import { configFileNames } from '../../../../config/app-strings';
-import { RenovateConfig } from '../../../../config';
-import { platform } from '../../../../platform';
+import type { RenovateConfig } from '../../../../config/types';
+import { logger } from '../../../../logger';
+import { commitFiles } from '../../../../util/git';
+import { formatCommitMessagePrefix } from '../../util/commit-message';
+import { getOnboardingConfigContents } from './config';
 
 const defaultConfigFile = configFileNames[0];
 
 export async function createOnboardingBranch(
   config: Partial<RenovateConfig>
-): Promise<void> {
+): Promise<string | null> {
   logger.debug('createOnboardingBranch()');
-  const contents = await getOnboardingConfig(config);
-  logger.info('Creating onboarding branch');
-  let commitMessage;
-  // istanbul ignore if
-  if (config.semanticCommits) {
-    commitMessage = config.semanticCommitType;
+  const contents = await getOnboardingConfigContents(config);
+  logger.debug('Creating onboarding branch');
+
+  const configFile = configFileNames.includes(config.onboardingConfigFileName)
+    ? config.onboardingConfigFileName
+    : defaultConfigFile;
+
+  let commitMessagePrefix = '';
+  if (config.commitMessagePrefix) {
+    commitMessagePrefix = config.commitMessagePrefix;
+  } else if (config.semanticCommits === 'enabled') {
+    commitMessagePrefix = config.semanticCommitType;
     if (config.semanticCommitScope) {
-      commitMessage += `(${config.semanticCommitScope})`;
+      commitMessagePrefix += `(${config.semanticCommitScope})`;
     }
-    commitMessage += ': ';
-    commitMessage += 'add ' + defaultConfigFile;
-  } else {
-    commitMessage = 'Add ' + defaultConfigFile;
   }
+  if (commitMessagePrefix) {
+    commitMessagePrefix = formatCommitMessagePrefix(commitMessagePrefix);
+  }
+
+  let onboardingCommitMessage: string;
+  if (config.onboardingCommitMessage) {
+    onboardingCommitMessage = config.onboardingCommitMessage;
+  } else {
+    onboardingCommitMessage = `${
+      commitMessagePrefix ? 'add' : 'Add'
+    } ${configFile}`;
+  }
+
+  const commitMessage =
+    `${commitMessagePrefix} ${onboardingCommitMessage}`.trim();
+
   // istanbul ignore if
-  if (config.dryRun) {
+  if (getAdminConfig().dryRun) {
     logger.info('DRY-RUN: Would commit files to onboarding branch');
-  } else {
-    await platform.commitFilesToBranch(
-      config.onboardingBranch,
-      [
-        {
-          name: defaultConfigFile,
-          contents,
-        },
-      ],
-      commitMessage
-    );
+    return null;
   }
+  return commitFiles({
+    branchName: config.onboardingBranch,
+    files: [
+      {
+        name: configFile,
+        contents,
+      },
+    ],
+    message: commitMessage,
+  });
 }

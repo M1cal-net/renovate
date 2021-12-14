@@ -1,6 +1,9 @@
+import { getAdminConfig } from '../../config/admin';
+import type { RenovateConfig } from '../../config/types';
 import { logger } from '../../logger';
-import { RenovateConfig } from '../../config';
 import { platform } from '../../platform';
+import { BranchStatus } from '../../types';
+import { mergeBranch } from '../../util/git';
 
 export type AutomergeResult =
   | 'automerged'
@@ -8,6 +11,7 @@ export type AutomergeResult =
   | 'branch status error'
   | 'failed'
   | 'no automerge'
+  | 'stale'
   | 'not ready';
 
 export async function tryBranchAutomerge(
@@ -25,24 +29,53 @@ export async function tryBranchAutomerge(
     config.branchName,
     config.requiredStatusChecks
   );
-  if (branchStatus === 'success') {
+  if (branchStatus === BranchStatus.green) {
     logger.debug(`Automerging branch`);
     try {
-      if (config.dryRun)
+      if (getAdminConfig().dryRun) {
         logger.info('DRY-RUN: Would automerge branch' + config.branchName);
-      else await platform.mergeBranch(config.branchName);
+      } else {
+        await mergeBranch(config.branchName);
+      }
       logger.info({ branch: config.branchName }, 'Branch automerged');
       return 'automerged'; // Branch no longer exists
-    } catch (err) {
-      // istanbul ignore if
+    } catch (err) /* istanbul ignore next */ {
       if (err.message === 'not ready') {
-        logger.info('Branch is not ready for automerge');
+        logger.debug('Branch is not ready for automerge');
         return 'not ready';
       }
-      logger.info({ err }, `Failed to automerge branch`);
+      if (
+        err.message.includes('refusing to merge unrelated histories') ||
+        err.message.includes('Not possible to fast-forward')
+      ) {
+        logger.warn({ err }, 'Branch is not up to date - cannot automerge');
+        return 'stale';
+      }
+      if (err.message.includes('Protected branch')) {
+        if (err.message.includes('status check')) {
+          logger.debug(
+            { err },
+            'Branch is not ready for automerge: required status checks are remaining'
+          );
+          return 'not ready';
+        }
+        if (err.stack?.includes('reviewers')) {
+          logger.info(
+            { err },
+            'Branch automerge is not possible due to branch protection (required reviewers)'
+          );
+          return 'failed';
+        }
+        logger.info(
+          { err },
+          'Branch automerge is not possible due to branch protection'
+        );
+        return 'failed';
+      }
+      logger.warn({ err }, 'Unknown error when attempting branch automerge');
       return 'failed';
     }
-  } else if (['failure', 'error'].includes(branchStatus)) {
+  } else if (branchStatus === BranchStatus.red) {
     return 'branch status error';
   } else {
     logger.debug(`Branch status is "${branchStatus}" - skipping automerge`);

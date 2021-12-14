@@ -1,14 +1,14 @@
-import handlebars from 'handlebars';
 import { logger } from '../../../logger';
-import { PrBodyConfig } from './common';
+import * as template from '../../../util/template';
+import type { BranchConfig } from '../../types';
 
 type TableDefinition = {
   header: string;
   value: string;
 };
 
-function getTableDefinition(config: PrBodyConfig): TableDefinition[] {
-  const res = [];
+function getTableDefinition(config: BranchConfig): TableDefinition[] {
+  const res: TableDefinition[] = [];
   for (const header of config.prBodyColumns) {
     const value = config.prBodyDefinitions[header];
     res.push({ header, value });
@@ -24,7 +24,7 @@ function getNonEmptyColumns(
   for (const column of definitions) {
     const { header } = column;
     for (const row of rows) {
-      if (row[header] && row[header].length) {
+      if (row[header]?.length) {
         if (!res.includes(header)) {
           res.push(header);
         }
@@ -34,18 +34,16 @@ function getNonEmptyColumns(
   return res;
 }
 
-export function getPrUpdatesTable(config: PrBodyConfig): string {
+export function getPrUpdatesTable(config: BranchConfig): string {
   const tableDefinitions = getTableDefinition(config);
-  const tableValues = config.upgrades.map(upgrade => {
+  const tableValues = config.upgrades.map((upgrade) => {
     const res: Record<string, string> = {};
     for (const column of tableDefinitions) {
       const { header, value } = column;
       try {
         // istanbul ignore else
         if (value) {
-          res[header] = handlebars
-            .compile(value)(upgrade)
-            .replace(/^``$/, '');
+          res[header] = template.compile(value, upgrade).replace(/^``$/, '');
         } else {
           res[header] = '';
         }
@@ -63,7 +61,10 @@ export function getPrUpdatesTable(config: PrBodyConfig): string {
   for (const row of tableValues) {
     let val = '|';
     for (const column of tableColumns) {
-      val += ` ${row[column].replace(/^@/, '@&#8203;')} |`;
+      const content = row[column]
+        ? row[column].replace(/^@/, '@&#8203;').replace(/\|/g, '\\|')
+        : '';
+      val += ` ${content} |`;
     }
     val += '\n';
     rows.push(val);

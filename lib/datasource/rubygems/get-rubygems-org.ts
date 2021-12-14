@@ -1,10 +1,22 @@
-import got from '../../util/got';
 import { logger } from '../../logger';
-import { ReleaseResult } from '../common';
+import { ExternalHostError } from '../../types/errors/external-host-error';
+import { getElapsedMinutes } from '../../util/date';
+import { Http } from '../../util/http';
+import type { ReleaseResult } from '../types';
+import { id } from './common';
+
+const http = new Http(id);
 
 let lastSync = new Date('2000-01-01');
 let packageReleases: Record<string, string[]> = Object.create(null); // Because we might need a "constructor" key
 let contentLength = 0;
+
+// Note: use only for tests
+export function resetCache(): void {
+  lastSync = new Date('2000-01-01');
+  packageReleases = Object.create(null);
+  contentLength = 0;
+}
 
 /* https://bugs.chromium.org/p/v8/issues/detail?id=2869 */
 const copystr = (x: string): string => (' ' + x).slice(1);
@@ -20,13 +32,17 @@ async function updateRubyGemsVersions(): Promise<void> {
   let newLines: string;
   try {
     logger.debug('Rubygems: Fetching rubygems.org versions');
-    newLines = (await got(url, options)).body;
+    const startTime = Date.now();
+    newLines = (await http.get(url, options)).body;
+    const durationMs = Math.round(Date.now() - startTime);
+    logger.debug({ durationMs }, 'Rubygems: Fetched rubygems.org versions');
   } catch (err) /* istanbul ignore next */ {
     if (err.statusCode !== 416) {
-      logger.warn({ err }, 'Rubygems error - resetting cache');
       contentLength = 0;
       packageReleases = Object.create(null); // Because we might need a "constructor" key
-      throw new Error('registry-failure');
+      throw new ExternalHostError(
+        new Error('Rubygems fetch error - need to reset cache')
+      );
     }
     logger.debug('Rubygems: No update');
     lastSync = new Date();
@@ -46,13 +62,13 @@ async function updateRubyGemsVersions(): Promise<void> {
       [pkg, versions] = split;
       pkg = copystr(pkg);
       packageReleases[pkg] = packageReleases[pkg] || [];
-      const lineVersions = versions.split(',').map(version => version.trim());
+      const lineVersions = versions.split(',').map((version) => version.trim());
       for (const lineVersion of lineVersions) {
         if (lineVersion.startsWith('-')) {
           const deletedVersion = lineVersion.slice(1);
           logger.trace({ pkg, deletedVersion }, 'Rubygems: Deleting version');
           packageReleases[pkg] = packageReleases[pkg].filter(
-            version => version !== deletedVersion
+            (version) => version !== deletedVersion
           );
         } else {
           packageReleases[pkg].push(copystr(lineVersion));
@@ -73,18 +89,18 @@ async function updateRubyGemsVersions(): Promise<void> {
 }
 
 function isDataStale(): boolean {
-  const minutesElapsed = Math.floor(
-    (new Date().getTime() - lastSync.getTime()) / (60 * 1000)
-  );
-  return minutesElapsed >= 5;
+  return getElapsedMinutes(lastSync) >= 5;
 }
+
+let updateRubyGemsVersionsPromise: Promise<void> | undefined;
 
 async function syncVersions(): Promise<void> {
   if (isDataStale()) {
-    global.updateRubyGemsVersions =
-      global.updateRubyGemsVersions || updateRubyGemsVersions();
-    await global.updateRubyGemsVersions;
-    delete global.updateRubyGemsVersions;
+    updateRubyGemsVersionsPromise =
+      // eslint-disable-next-line @typescript-eslint/no-misused-promises
+      updateRubyGemsVersionsPromise || updateRubyGemsVersions();
+    await updateRubyGemsVersionsPromise;
+    updateRubyGemsVersionsPromise = null;
   }
 }
 
@@ -97,8 +113,7 @@ export async function getRubygemsOrgDependency(
     return null;
   }
   const dep: ReleaseResult = {
-    name: lookupName,
-    releases: packageReleases[lookupName].map(version => ({ version })),
+    releases: packageReleases[lookupName].map((version) => ({ version })),
   };
   return dep;
 }

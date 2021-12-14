@@ -1,18 +1,15 @@
-import fs from 'fs-extra';
-import bunyan from 'bunyan';
 import { Stream } from 'stream';
-import { sanitize } from '../util/sanitize';
-
-export interface BunyanRecord extends Record<string, any> {
-  level: number;
-  msg: string;
-  module?: string;
-}
+import bunyan from 'bunyan';
+import fs from 'fs-extra';
+import { clone } from '../util/clone';
+import { HttpError } from '../util/http/types';
+import { redactedFields, sanitize } from '../util/sanitize';
+import type { BunyanRecord, BunyanStream } from './types';
 
 const excludeProps = ['pid', 'time', 'v', 'hostname'];
 
-export class ErrorStream extends Stream {
-  private _errors: BunyanRecord[] = [];
+export class ProblemStream extends Stream {
+  private _problems: BunyanRecord[] = [];
 
   readable: boolean;
 
@@ -25,18 +22,73 @@ export class ErrorStream extends Stream {
   }
 
   write(data: BunyanRecord): boolean {
-    const err = { ...data };
-    for (const prop of excludeProps) delete err[prop];
-    this._errors.push(err);
+    const problem = { ...data };
+    for (const prop of excludeProps) {
+      delete problem[prop];
+    }
+    this._problems.push(problem);
     return true;
   }
 
-  getErrors(): BunyanRecord[] {
-    return this._errors;
+  getProblems(): BunyanRecord[] {
+    return this._problems;
+  }
+
+  clearProblems(): void {
+    this._problems = [];
   }
 }
+const templateFields = ['prBody'];
+const contentFields = [
+  'content',
+  'contents',
+  'packageLockParsed',
+  'yarnLockParsed',
+];
 
-function sanitizeValue(value: any, seen = new WeakMap()): any {
+export default function prepareError(err: Error): Record<string, unknown> {
+  const response: Record<string, unknown> = {
+    ...err,
+  };
+
+  // Required as message is non-enumerable
+  if (!response.message && err.message) {
+    response.message = err.message;
+  }
+
+  // Required as stack is non-enumerable
+  if (!response.stack && err.stack) {
+    response.stack = err.stack;
+  }
+
+  // handle got error
+  if (err instanceof HttpError) {
+    const options: Record<string, unknown> = {
+      headers: clone(err.options.headers),
+      url: err.options.url?.toString(),
+    };
+    response.options = options;
+
+    for (const k of ['username', 'password', 'method', 'http2']) {
+      options[k] = err.options[k];
+    }
+
+    // istanbul ignore else
+    if (err.response) {
+      response.response = {
+        statusCode: err.response?.statusCode,
+        statusMessage: err.response?.statusMessage,
+        body: clone(err.response.body),
+        headers: clone(err.response.headers),
+        httpVersion: err.response.httpVersion,
+      };
+    }
+  }
+
+  return response;
+}
+
+export function sanitizeValue(value: unknown, seen = new WeakMap()): any {
   if (Array.isArray(value)) {
     const length = value.length;
     const arrayResult = Array(length);
@@ -50,6 +102,15 @@ function sanitizeValue(value: any, seen = new WeakMap()): any {
     return arrayResult;
   }
 
+  if (value instanceof Buffer) {
+    return '[content]';
+  }
+
+  if (value instanceof Error) {
+    // eslint-disable-next-line no-param-reassign
+    value = prepareError(value);
+  }
+
   const valueType = typeof value;
 
   if (value != null && valueType !== 'function' && valueType === 'object') {
@@ -58,24 +119,41 @@ function sanitizeValue(value: any, seen = new WeakMap()): any {
     }
 
     const objectResult: Record<string, any> = {};
-    seen.set(value, objectResult);
+    seen.set(value as any, objectResult);
     for (const [key, val] of Object.entries<any>(value)) {
-      objectResult[key] = seen.has(val)
-        ? seen.get(val)
-        : sanitizeValue(val, seen);
+      let curValue: any;
+      if (!val) {
+        curValue = val;
+      } else if (redactedFields.includes(key)) {
+        curValue = '***********';
+      } else if (contentFields.includes(key)) {
+        curValue = '[content]';
+      } else if (templateFields.includes(key)) {
+        curValue = '[Template]';
+      } else if (key === 'secrets') {
+        curValue = {};
+        Object.keys(val).forEach((secretKey) => {
+          curValue[secretKey] = '***********';
+        });
+      } else {
+        curValue = seen.has(val) ? seen.get(val) : sanitizeValue(val, seen);
+      }
+
+      objectResult[key] = curValue;
     }
     return objectResult;
   }
 
-  return valueType === 'string' ? sanitize(value) : value;
+  return valueType === 'string' ? sanitize(value as string) : value;
 }
 
-export function withSanitizer(streamConfig): bunyan.Stream {
-  if (streamConfig.type === 'rotating-file')
+export function withSanitizer(streamConfig: bunyan.Stream): bunyan.Stream {
+  if (streamConfig.type === 'rotating-file') {
     throw new Error("Rotating files aren't supported");
+  }
 
-  const stream = streamConfig.stream;
-  if (stream && stream.writable) {
+  const stream = streamConfig.stream as BunyanStream;
+  if (stream?.writable) {
     const write = (chunk: BunyanRecord, enc, cb): void => {
       const raw = sanitizeValue(chunk);
       const result =
@@ -89,7 +167,7 @@ export function withSanitizer(streamConfig): bunyan.Stream {
       ...streamConfig,
       type: 'raw',
       stream: { write },
-    };
+    } as bunyan.Stream;
   }
 
   if (streamConfig.path) {

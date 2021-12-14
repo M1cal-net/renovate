@@ -1,11 +1,17 @@
-import { isValid } from '../../versioning/hex';
+import * as datasourceHex from '../../datasource/hex';
 import { logger } from '../../logger';
-import { PackageDependency, PackageFile } from '../common';
+import { SkipReason } from '../../types';
+import { getSiblingFileName, localPathExists } from '../../util/fs';
+import type { PackageDependency, PackageFile } from '../types';
 
 const depSectionRegExp = /defp\s+deps.*do/g;
-const depMatchRegExp = /{:(\w+),\s*([^:"]+)?:?\s*"([^"]+)",?\s*(organization: "(.*)")?.*}/gm;
+const depMatchRegExp =
+  /{:(\w+),\s*([^:"]+)?:?\s*"([^"]+)",?\s*(organization: "(.*)")?.*}/gm;
 
-export function extractPackageFile(content: string): PackageFile {
+export async function extractPackageFile(
+  content: string,
+  fileName: string
+): Promise<PackageFile | null> {
   logger.trace('mix.extractPackageFile()');
   const deps: PackageDependency[] = [];
   const contentArr = content.split('\n');
@@ -33,9 +39,9 @@ export function extractPackageFile(content: string): PackageFile {
             managerData: {},
           };
 
-          dep.datasource = datasource || 'hex';
+          dep.datasource = datasource || datasourceHex.id;
 
-          if (dep.datasource === 'hex') {
+          if (dep.datasource === datasourceHex.id) {
             dep.currentValue = currentValue;
             dep.lookupName = depName;
           }
@@ -44,23 +50,27 @@ export function extractPackageFile(content: string): PackageFile {
             dep.lookupName += ':' + organization;
           }
 
-          if (!isValid(currentValue)) {
-            dep.skipReason = 'unsupported-version';
-          }
-
-          if (dep.datasource !== 'hex') {
-            dep.skipReason = 'non-hex depTypes';
+          if (dep.datasource !== datasourceHex.id) {
+            dep.skipReason = SkipReason.NonHexDeptypes;
           }
 
           // Find dep's line number
-          for (let i = 0; i < contentArr.length; i += 1)
-            if (contentArr[i].includes(`:${depName},`))
+          for (let i = 0; i < contentArr.length; i += 1) {
+            if (contentArr[i].includes(`:${depName},`)) {
               dep.managerData.lineNumber = i;
+            }
+          }
 
           deps.push(dep);
         }
       } while (depMatch);
     }
   }
-  return { deps };
+  const res: PackageFile = { deps };
+  const lockFileName = getSiblingFileName(fileName, 'mix.lock');
+  // istanbul ignore if
+  if (await localPathExists(lockFileName)) {
+    res.lockFiles = [lockFileName];
+  }
+  return res;
 }

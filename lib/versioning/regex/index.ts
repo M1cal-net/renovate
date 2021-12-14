@@ -1,7 +1,13 @@
-import { compare, satisfies, ltr, minSatisfying, maxSatisfying } from 'semver';
-import { VersioningApiConstructor } from '../common';
-import { GenericVersion, GenericVersioningApi } from '../loose/generic';
+import { compare, ltr, maxSatisfying, minSatisfying, satisfies } from 'semver';
+import { CONFIG_VALIDATION } from '../../constants/error-messages';
 import { regEx } from '../../util/regex';
+import { GenericVersion, GenericVersioningApi } from '../loose/generic';
+import type { VersioningApiConstructor } from '../types';
+
+export const id = 'regex';
+export const displayName = 'Regular Expression';
+export const urls = [];
+export const supportsRanges = false;
 
 export interface RegExpVersion extends GenericVersion {
   /** prereleases are treated in the standard semver manner, if present */
@@ -30,15 +36,16 @@ export class RegExpVersioningApi extends GenericVersioningApi<RegExpVersion> {
   //   RegExp('^(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)(-(?<prerelease>.*))?$')
   // * emulates the "docker" configuration:
   //   RegExp('^(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)(-(?<compatibility>.*))?$')
-  // * matches the versioning scheme used by the Python images on DockerHub:
+  // * matches the versioning approach used by the Python images on DockerHub:
   //   RegExp('^(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)(?<prerelease>[^.-]+)?(-(?<compatibility>.*))?$');
   private _config: RegExp = null;
 
   constructor(new_config: string) {
     super();
-    if (!new_config)
+    if (!new_config) {
       // eslint-disable-next-line no-param-reassign
       new_config = '^(?<major>\\d+)?$';
+    }
 
     // without at least one of {major, minor, patch} specified in the regex,
     // this versioner will not work properly
@@ -47,15 +54,15 @@ export class RegExpVersioningApi extends GenericVersioningApi<RegExpVersion> {
       !new_config.includes('<minor>') &&
       !new_config.includes('<patch>')
     ) {
-      const error = new Error('config-validation');
-      error.configFile = new_config;
+      const error = new Error(CONFIG_VALIDATION);
+      error.validationSource = new_config;
       error.validationError =
-        'regex versionScheme needs at least one major, minor or patch group defined';
+        'regex versioning needs at least one major, minor or patch group defined';
       throw error;
     }
 
     // TODO: should we validate the user has not added extra unsupported
-    // capture groups?
+    // capture groups? (#9717)
     this._config = regEx(new_config);
   }
 
@@ -68,7 +75,7 @@ export class RegExpVersioningApi extends GenericVersioningApi<RegExpVersion> {
 
   // convenience method for passing a string into a Version given current config.
   protected _parse(version: string): RegExpVersion | null {
-    const match = version ? version.match(this._config) : null;
+    const match = this._config.exec(version);
     if (match === null) {
       return null;
     }
@@ -99,16 +106,16 @@ export class RegExpVersioningApi extends GenericVersioningApi<RegExpVersion> {
     return ltr(asSemver(this._parse(version)), asSemver(this._parse(range)));
   }
 
-  maxSatisfyingVersion(versions: string[], range: string): string | null {
+  getSatisfyingVersion(versions: string[], range: string): string | null {
     return maxSatisfying(
-      versions.map(v => asSemver(this._parse(v))),
+      versions.map((v) => asSemver(this._parse(v))),
       asSemver(this._parse(range))
     );
   }
 
   minSatisfyingVersion(versions: string[], range: string): string | null {
     return minSatisfying(
-      versions.map(v => asSemver(this._parse(v))),
+      versions.map((v) => asSemver(this._parse(v))),
       asSemver(this._parse(range))
     );
   }

@@ -1,0 +1,5 @@
+version: 1
+push:
+  branches:
+    - '!main'
+pull_request:

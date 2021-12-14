@@ -1,33 +1,24 @@
-import upath from 'upath';
-import fs from 'fs-extra';
-import { hrtime } from 'process';
-import { platform } from '../../platform';
-import { exec } from '../../util/exec';
+import { quote } from 'shlex';
+import { TEMPORARY_ERROR } from '../../constants/error-messages';
 import { logger } from '../../logger';
-import { UpdateArtifactsConfig, UpdateArtifactsResult } from '../common';
+import { ExecOptions, exec } from '../../util/exec';
+import { readLocalFile, writeLocalFile } from '../../util/fs';
+import type { UpdateArtifact, UpdateArtifactsResult } from '../types';
 
-export async function updateArtifacts(
-  packageFileName: string,
-  updatedDeps: string[],
-  newPackageFileContent: string,
-  config: UpdateArtifactsConfig
-): Promise<UpdateArtifactsResult[] | null> {
+export async function updateArtifacts({
+  packageFileName,
+  updatedDeps,
+  newPackageFileContent,
+}: UpdateArtifact): Promise<UpdateArtifactsResult[] | null> {
   logger.debug(`mix.getArtifacts(${packageFileName})`);
   if (updatedDeps.length < 1) {
     logger.debug('No updated mix deps - returning null');
     return null;
   }
 
-  const cwd = config.localDir;
-  if (!cwd) {
-    logger.debug('No local dir specified');
-    return null;
-  }
-
   const lockFileName = 'mix.lock';
   try {
-    const localPackageFileName = upath.join(cwd, packageFileName);
-    await fs.outputFile(localPackageFileName, newPackageFileContent);
+    await writeLocalFile(packageFileName, newPackageFileContent);
   } catch (err) {
     logger.warn({ err }, 'mix.exs could not be written');
     return [
@@ -40,35 +31,28 @@ export async function updateArtifacts(
     ];
   }
 
-  const existingLockFileContent = await platform.getFile(lockFileName);
+  const existingLockFileContent = await readLocalFile(lockFileName, 'utf8');
   if (!existingLockFileContent) {
     logger.debug('No mix.lock found');
     return null;
   }
 
-  const cmdParts =
-    config.binarySource === 'docker'
-      ? [
-          'docker',
-          'run',
-          '--rm',
-          `-v ${cwd}:${cwd}`,
-          `-w ${cwd}`,
-          'renovate/mix mix',
-        ]
-      : ['mix'];
-  cmdParts.push('deps.update');
+  const execOptions: ExecOptions = {
+    cwdFile: packageFileName,
+    docker: { image: 'elixir' },
+  };
+  const command = ['mix', 'deps.update', ...updatedDeps.map(quote)].join(' ');
 
-  const startTime = hrtime();
-  /* istanbul ignore next */
   try {
-    const command = [...cmdParts, ...updatedDeps].join(' ');
-    const { stdout, stderr } = await exec(command, { cwd });
-    logger.debug(stdout);
-    if (stderr) logger.warn('error: ' + stderr);
+    await exec(command, execOptions);
   } catch (err) {
+    // istanbul ignore if
+    if (err.message === TEMPORARY_ERROR) {
+      throw err;
+    }
+
     logger.warn(
-      { err, message: err.message },
+      { err, message: err.message, command },
       'Failed to update Mix lock file'
     );
 
@@ -82,18 +66,12 @@ export async function updateArtifacts(
     ];
   }
 
-  const duration = hrtime(startTime);
-  const seconds = Math.round(duration[0] + duration[1] / 1e9);
-  logger.info({ seconds, type: 'mix.lock' }, 'Updated lockfile');
-  logger.debug('Returning updated mix.lock');
-
-  const localLockFileName = upath.join(cwd, lockFileName);
-  const newMixLockContent = await fs.readFile(localLockFileName, 'utf8');
+  const newMixLockContent = await readLocalFile(lockFileName, 'utf8');
   if (existingLockFileContent === newMixLockContent) {
     logger.debug('mix.lock is unchanged');
     return null;
   }
-
+  logger.debug('Returning updated mix.lock');
   return [
     {
       file: {
