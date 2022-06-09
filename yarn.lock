@@ -7644,10 +7644,10 @@ p-locate@^5.0.0:
   dependencies:
     p-limit "^3.0.2"
 
-p-map@5.1.0:
-  version "5.1.0"
-  resolved "https://registry.yarnpkg.com/p-map/-/p-map-5.1.0.tgz#1c31bdfc492910098bdb4e63d099efbdd9b37755"
-  integrity sha512-hDTnBRGPXM4hUkmV4Nbe9ZyFnqUAHFYq5S/3+P38TRf0KbmkQuRSzfGM+JngEJsvB0m6nHvhsSv5E6VsGSB2zA==
+p-map@5.5.0:
+  version "5.5.0"
+  resolved "https://registry.yarnpkg.com/p-map/-/p-map-5.5.0.tgz#054ca8ca778dfa4cf3f8db6638ccb5b937266715"
+  integrity sha512-VFqfGDHlx87K66yZrNdI4YGtD70IRyd+zSvgks6mzHPRNkoKy+9EKP4SFC77/vTTQYmRmti7dvqC+m5jBrBAcg==
   dependencies:
     aggregate-error "^4.0.0"
 
